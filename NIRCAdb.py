@@ -1,4 +1,4 @@
-"""NIRCAdb Package Version 7.0rc0 source code.
+"""NIRCAdb Package Version 7.0rc1 source code.
 
 This contains the source code for what will be NIRCAdb Version 7.0.  It is
 currently under construction.  Once completed this will serve as base python
@@ -48,26 +48,25 @@ New Features:
 
 Todo:
 
-    * Debug changes to Runner, Result, Team, and Race objects. Major changes
-      were made to the way simulated races are generated.
+    * QOL changes for printing runners, results and teams
 
     * Add and debug query functions. These will most likely go into a new class 
-      to streamline integration with the GUI display.
+      to streamline integration with the GUI display. (2.0)
 
-    * Build GUI for Query.
+    * Build GUI for Query. (5.0)
 
-    * Program MCMC result processing.
+    * Program and implement MCMC result processing. (3.0)
  
-    * Fix result formatting, processing and uploading issues.
+    * Fix result formatting, processing and uploading issues. (4.0)
 
-    * Add Result Uploading features to GUI
+    * Add Result Uploading features to GUI (6.0)
 
-.. NIRCAdb 7.0rc0
+.. NIRCAdb 7.0rc1
    http://github.com/Snyder005/NIRCAdb
 
 """
 
-__version__ == "7.0rc0"
+__version__ = "7.0rc1"
 
 ################################################################################
 ##
@@ -120,7 +119,7 @@ class Runner(Base):
     status = sql.Column(sql.Boolean)
 
     ## Create one-to-many relationship with Results table
-    results = relationship("Result", backref=backref('runners'))
+    results = relationship("Result", backref=backref('runner'))
 
     @reconstructor
     def init_on_load(self):
@@ -175,13 +174,16 @@ class Runner(Base):
             new_ratings = stats.norm.rvs(loc=self.rating, scale=scale,
                                          size=num_races)
         else:
-            raise KeyError('Incorrect mode: {0}'.format(mode))
+            raise KeyError("Incorrect mode: '{0}'".format(mode))
             
         self._ratings_list = new_ratings
         self._average = np.mean(new_ratings)
         self._races_simulated = True
 
-        return result_list, average
+        return self.ratings_list, self.average
+
+    def __str__(self):
+        return "{0} \n".format(self.name)
         
 
 class Result(Base):
@@ -245,7 +247,7 @@ class Team(Base):
     region = sql.Column(sql.String)
 
     ## Create one-to-many relationship with Runners table
-    runners = relationship("Runner", backref=backref('teams'))
+    runners = relationship("Runner", backref=backref('team'))
 
     @reconstructor
     def init_on_load(self):
@@ -279,7 +281,7 @@ class Team(Base):
             Length of 'runners' array.
         """
 
-        return len(team.runners)
+        return len(self.runners)
 
     def sim_races(self, num_races, mode='maxwell', **kwargs):
         """Simulate Speed Ratings for each runner on the team.
@@ -290,8 +292,8 @@ class Team(Base):
             **kwargs: Keyword arguments for 'mode'.
         """
 
-        self.average = 0
-        self.result_list = []
+        self._average = 0
+        self._result_list = []
 
         for runner in self.runners:
             runner.sim_races(num_races, mode, **kwargs)
@@ -313,11 +315,12 @@ class Race:
     def __init__(self, teams):
 
         ## Format teams to include only top 7 and ignore ineligible teams
+        if not isinstance(teams, list):
+            teams = [teams]
         for team in teams:
             team.sort_by_rating()
-        self.team_results = [(Team(id=t.id, name=t.name,
-                                   runners=t.runners[0:7]), 0, []) \
-                             for t in teams if t.size() >=5]
+        self.teams = [Team(id=t.id, name=t.name, runners=t.runners[0:7]) \
+                      for t in teams if t.size() >=5]
 
         self.runners = []
         self._is_simulated = False
@@ -345,7 +348,7 @@ class Race:
 
         ## For each race calculate each teams score
         for i in range(num_races):
-            self.runners.sort(key=lambda x: x.result_list[i], reverse=True)
+            self.runners.sort(key=lambda x: x.ratings_list[i], reverse=True)
             for team in self.teams:
                 places = [1 + self.runners.index(runner) for runner \
                           in self.runners if team.name == runner.team.name]
@@ -358,7 +361,7 @@ class Race:
 
         ## Calculate the average score for each team
         for team in self.teams:
-            team.average = round(np.mean([result[1] for result in \
+            team._average = round(np.mean([result[1] for result in \
                                           team.result_list]))
             
         self.teams.sort(key=lambda x: x.average)
@@ -388,8 +391,23 @@ def main():
     engine = sql.create_engine('sqlite:///test.db', echo=False)
     Base.metadata.create_all(engine)
     Session.configure(bind=engine)
+    
 
     ## Qt Stuff will go here
+
+    ## Debugging here
+    session = Session()
+    team1 = session.query(Team).filter_by(name = 'University of Illinois').first()
+    team2 = session.query(Team).filter_by(name = 'Cal Poly').first()
+    team3 = session.query(Team).filter_by(name = 'Stanford University').first()
+
+    race = Race([team1, team2, team3])
+    race.run(1)
+    for team in race.teams:
+        print team.name, team.result_list
+    for runner in race.runners:
+        print runner.name, runner.team.name, runner.ratings_list
+    
 
 if __name__ == '__main__':
 
