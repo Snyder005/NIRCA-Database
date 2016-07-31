@@ -304,7 +304,7 @@ class Team(Base):
 ##
 ################################################################################
 
-class Race:
+class Sim:
     """Represents a hypothetical race consisting of runners from a team(s).
 
     Attributes:
@@ -401,7 +401,7 @@ def main():
     team2 = session.query(Team).filter_by(name = 'Cal Poly').first()
     team3 = session.query(Team).filter_by(name = 'Stanford University').first()
 
-    race = Race([team1, team2, team3])
+    race = Sim([team1, team2, team3])
     race.run(1)
     for team in race.teams:
         print team.name, team.result_list
