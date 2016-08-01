@@ -141,6 +141,31 @@ class Runner(Base):
     def races_simulated(self):
         return self._races_simulated
 
+    def update_rating(result):
+
+        if runner.rating == None:
+            runner.status = True
+            runner.rating = round(result.rating, 3)
+        elif not runner.status:
+            runner.status = True
+            runner.rating = round(result.rating, 3)
+        else:
+            diff = abs(result.rating - runner.rating)
+            if diff >= 40:
+                new = max(result.rating, runner.rating)*0.9 + \
+                      min(result.rating, runner.rating)*0.1
+            elif 30 <= diff < 40:
+                new = max(result.rating, runner.rating)*0.85 + \
+                      min(result.rating, runner.rating)*0.15
+            elif 20 < diff < 30:
+                new = max(result.rating, runner.rating)*0.8 + \
+                      min(result.rating, runner.rating)*0.75
+            else:
+                new = max(result.rating, runner.rating)*0.75 + \
+                      min(result.rating, runner.rating)*0.25
+
+        self.rating = round(new_rating, 3)
+
     def sim_races(self, num_races, mode='maxwell', **kwargs):
         """Simulate Speed Ratings based on a particular method.
 
@@ -300,12 +325,85 @@ class Team(Base):
 
 ################################################################################
 ##
-## Race Simulator Object
+## Query Object
+##
+################################################################################
+
+class Search:
+    """Represents a database query."""
+
+    def __init__(self, session):
+
+        self.session = session
+        self._result = None
+
+    @property
+    def result(self):
+        return self._result
+
+    def build_query(self, team_list=[], gender=None, status=None):
+        """Build a query with team, gender and status filters.
+
+        Args:
+            team_list (list): List of team names.
+            gender (str): Gender filter; male ('M') or female ('F').
+            status (bool): Status filter; active (1) or inactive (0).
+        """
+
+        search = self.session.query(Runner)
+
+        ## Format gender selection
+        if gender in ['M', 'F']:
+            search = search.filter_by(gender=gender)
+
+        ## Format status selection
+        if status not None:
+            search = search.filter_by(status=status)
+
+        ## Format team selection
+        if not isinstance(team_list, list):
+            team_list = [team_list]
+        
+        if len(team_list) == 0:
+            team_choice = []
+
+        elif len(team_list) == 1:
+            search = search.join(Team).filter_by(name=team_list[0])
+        elif len(team_list) > 1:
+            search = search.join(Team).filter(Team.name.in_(team_list))
+
+        self._result = search.all()
+            
+
+    @classmethod
+    def get_teams(cls, session):
+
+        search = cls(session)
+        
+        team_query = search.query(Team)
+        team_list = team_query.all()
+
+        return team_list
+
+    @classmethod
+    def get_team_names(cls, session):
+
+        team_list = cls.get_teams(session)
+        team_name_list = [team.name for team in team_list]
+
+        return team_name_list
+        
+            
+            
+
+################################################################################
+##
+## Simulator Object
 ##
 ################################################################################
 
 class Sim:
-    """Represents a hypothetical race consisting of runners from a team(s).
+    """Represents a race simulation consisting of runners from a team(s).
 
     Attributes:
         teams (list): List of teams in the race.
@@ -378,6 +476,40 @@ class Sim:
         #    runner.show_result()
         #
         #return print_string
+
+################################################################################
+##
+## Race Object
+##
+################################################################################
+
+class Race:
+    """Represents a race.
+
+    This Python object will eventually perform all the processing to add
+    race results to the database.
+    """
+
+    Attributes:
+        name (str): Name of the race.
+        date (Date): Date of race.
+        distance (int): Race distance in meters.
+        filename (str): Name of file with race results
+    """
+
+    def __init__(self, name, date, distance):
+
+        self.name = name
+        self.date = date
+        self.distance = distance
+
+    def generate_ratings(self):
+        """Generate ratings using a MCMC technique."""
+        pass
+        
+    def export_to_database(self):
+        """Export ratings to a SQL database."""
+        pass
 
 ################################################################################
 ##
