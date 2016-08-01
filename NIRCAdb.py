@@ -141,7 +141,7 @@ class Runner(Base):
     def races_simulated(self):
         return self._races_simulated
 
-    def update_rating(result):
+    def update_rating(self.result):
 
         if runner.rating == None:
             runner.status = True
@@ -488,7 +488,6 @@ class Race:
 
     This Python object will eventually perform all the processing to add
     race results to the database.
-    """
 
     Attributes:
         name (str): Name of the race.
