@@ -1,4 +1,4 @@
-"""NIRCAdb Package Version 7.0rc1 source code.
+"""NIRCAdb Package Version 7.0rc2 source code.
 
 This contains the source code for what will be NIRCAdb Version 7.0.  It is
 currently under construction.  Once completed this will serve as base python
@@ -50,9 +50,6 @@ Todo:
 
     * QOL changes for printing runners, results and teams
 
-    * Add and debug query functions. These will most likely go into a new class 
-      to streamline integration with the GUI display. (2.0)
-
     * Build GUI for Query. (5.0)
 
     * Program and implement MCMC result processing. (3.0)
@@ -61,12 +58,12 @@ Todo:
 
     * Add Result Uploading features to GUI (6.0)
 
-.. NIRCAdb 7.0rc1
+.. NIRCAdb 7.0rc2
    http://github.com/Snyder005/NIRCAdb
 
 """
 
-__version__ = "7.0rc1"
+__version__ = "7.0rc2"
 
 ################################################################################
 ##
@@ -83,9 +80,31 @@ import numpy as np
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, backref, sessionmaker, reconstructor
 from scipy import stats
+from contextlib import contextmanager
 
 Base = declarative_base()
 Session = sessionmaker()
+
+@contextmanager
+def db_session(database):
+    """Create a session bound to the given database.
+
+    Args:
+        database (str): Database filepath.
+    """
+    
+    try:
+        engine = sql.create_engine(database, echo=False)
+        Base.metadata.create_all(engine)
+        Session.configure(bind=engine)
+        session = Session()
+        yield session
+        session.commit()
+    except:
+        session.rollback()
+        raise Exception # Placeholder
+    finally:
+        session.close()
 
 ################################################################################
 ##
@@ -129,6 +148,46 @@ class Runner(Base):
         self._ratings_list = []
         self._races_simulated = False
 
+    @classmethod
+    def from_db(cls, session, names = [], team_list=[], gender=None, status=None):        
+
+        query = session.query(cls)
+
+        ## If list of names, ignore other filters
+        if not isinstance(names, list):
+            names = [names]
+
+        if len(names) > 0:
+            if len(names) == 1:
+                query = query.filter(cls.name == names[0])
+            elif len(names) > 1:
+                query = query.filter(cls.name.in_(names))
+        
+        else:
+            ## Filter by gender
+            if gender in ['Male', 'Female']:
+                query = query.filter(cls.gender == gender)
+
+            ## Filter by status
+            if status is not None:
+                query = query.filter(cls.status == status)
+
+            ## Filter by team
+            if not isinstance(team_list, list):
+                team_list = [team_list]
+
+            if len(team_list) == 1:
+                query = query.join(Team).filter(Team.name == team_list[0])
+            elif len(team_choice) > 1:
+                query = query.join(Team).filter(Team.name.in_(team_list))
+
+        ## Determine proper return value
+        runners = query.all()
+        if len(runners) == 1:
+            return runners[0]
+        else:
+            return runners
+
     @property
     def average(self):
         return self._average
@@ -141,12 +200,28 @@ class Runner(Base):
     def races_simulated(self):
         return self._races_simulated
 
-    def update_rating(self.result):
+    def add_to_db(self, session):
+        """Add runner to database.
 
-        if runner.rating == None:
-            runner.status = True
-            runner.rating = round(result.rating, 3)
-        elif not runner.status:
+        Args:
+            session (Session): Database session object.
+        """
+
+        session.add(self)
+
+    def add_result(self, session, result):
+        """Add result to database and update runner Speed Rating.
+
+        Args:
+            session (Session): Database session object.
+            result (Result): Result object to be added.
+        """
+
+        result.runner_id = self.id
+        session.add(result)
+
+        ## Update Speed Rating in database
+        if runner.rating == None or runner.status == False:
             runner.status = True
             runner.rating = round(result.rating, 3)
         else:
@@ -163,8 +238,7 @@ class Runner(Base):
             else:
                 new = max(result.rating, runner.rating)*0.75 + \
                       min(result.rating, runner.rating)*0.25
-
-        self.rating = round(new_rating, 3)
+            self.rating = round(new_rating, 3)
 
     def sim_races(self, num_races, mode='maxwell', **kwargs):
         """Simulate Speed Ratings based on a particular method.
@@ -274,6 +348,46 @@ class Team(Base):
     ## Create one-to-many relationship with Runners table
     runners = relationship("Runner", backref=backref('team'))
 
+    @classmethod
+    def from_db(cls, session, names = [], regions=[]):
+        """Query database and return Teams depending on given filter.
+
+        Args:
+            session (Session): Database Session object.
+            names (list): Team name(s) to filter by.
+            regions (list): Region(s) to filter by.
+
+        Raises:
+            
+        """
+
+        ## Check that list objects are given
+        if not isinstance(names, list):
+            names = [names]           
+        if not isinstance(regions, list):
+            regions = [regions]
+
+        query = session.query(cls)
+
+        ## Filter by team name(s)
+        if len(names) == 1:
+            query = query.filter(cls.name == names[0])
+        elif len(names) > 1:
+            query = query.filter(cls.name.in_(names))
+
+        ## Filter by region(s)
+        if len(regions) == 1:
+            query = query.filter(cls.region == regions[0])
+        elif len(regions) > 1:
+            query = query.filter(cls.region.in_(regions))
+
+        ## Determine proper return value
+        teams = query.all()
+        if len(teams) == 1:
+            return teams[0]
+        else:
+            return teams
+
     @reconstructor
     def init_on_load(self):
         """Initialize instance attributes."""
@@ -321,80 +435,7 @@ class Team(Base):
         self._result_list = []
 
         for runner in self.runners:
-            runner.sim_races(num_races, mode, **kwargs)
-
-################################################################################
-##
-## Query Object
-##
-################################################################################
-
-class Search:
-    """Represents a database query."""
-
-    def __init__(self, session):
-
-        self.session = session
-        self._result = None
-
-    @property
-    def result(self):
-        return self._result
-
-    def build_query(self, team_list=[], gender=None, status=None):
-        """Build a query with team, gender and status filters.
-
-        Args:
-            team_list (list): List of team names.
-            gender (str): Gender filter; male ('M') or female ('F').
-            status (bool): Status filter; active (1) or inactive (0).
-        """
-
-        search = self.session.query(Runner)
-
-        ## Format gender selection
-        if gender in ['M', 'F']:
-            search = search.filter_by(gender=gender)
-
-        ## Format status selection
-        if status not None:
-            search = search.filter_by(status=status)
-
-        ## Format team selection
-        if not isinstance(team_list, list):
-            team_list = [team_list]
-        
-        if len(team_list) == 0:
-            team_choice = []
-
-        elif len(team_list) == 1:
-            search = search.join(Team).filter_by(name=team_list[0])
-        elif len(team_list) > 1:
-            search = search.join(Team).filter(Team.name.in_(team_list))
-
-        self._result = search.all()
-            
-
-    @classmethod
-    def get_teams(cls, session):
-
-        search = cls(session)
-        
-        team_query = search.query(Team)
-        team_list = team_query.all()
-
-        return team_list
-
-    @classmethod
-    def get_team_names(cls, session):
-
-        team_list = cls.get_teams(session)
-        team_name_list = [team.name for team in team_list]
-
-        return team_name_list
-        
-            
-            
+            runner.sim_races(num_races, mode, **kwargs)          
 
 ################################################################################
 ##
@@ -479,6 +520,31 @@ class Sim:
 
 ################################################################################
 ##
+## Functions to incorporate into a new Database/Query Class
+##
+################################################################################
+
+def get_team_match(session, lookup_name, threshold=0.8):  ## Move to matching module
+
+    team_list = get_teams(session)
+
+    matches = []
+    for team in team_list:
+        cost = jf.jaro_distance(unicode(lookup_name), unicode(team.name))
+
+        if cost < threshold:
+            matches.append((team, cost))
+
+    if len(matches) > 1:
+        matches.sort(key=lambda x: x[1], reverse=True)
+    elif len(matches) == 0:
+        raise Exception
+
+    return matches[0][0]
+    
+
+################################################################################
+##
 ## Race Object
 ##
 ################################################################################
@@ -517,27 +583,7 @@ class Race:
 ################################################################################
         
 def main():
-
-    ## Initialize sqlite database
-    engine = sql.create_engine('sqlite:///test.db', echo=False)
-    Base.metadata.create_all(engine)
-    Session.configure(bind=engine)
-    
-
-    ## Qt Stuff will go here
-
-    ## Debugging here
-    session = Session()
-    team1 = session.query(Team).filter_by(name = 'University of Illinois').first()
-    team2 = session.query(Team).filter_by(name = 'Cal Poly').first()
-    team3 = session.query(Team).filter_by(name = 'Stanford University').first()
-
-    race = Sim([team1, team2, team3])
-    race.run(1)
-    for team in race.teams:
-        print team.name, team.result_list
-    for runner in race.runners:
-        print runner.name, runner.team.name, runner.ratings_list
+    pass
     
 
 if __name__ == '__main__':
