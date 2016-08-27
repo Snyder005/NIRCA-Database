@@ -14,7 +14,7 @@ NIRCAdb_6.1.py is a GUI that interfaces with the SQLite database 'XC_2015.db'. T
 
 The final two features can be found in the Edit menu; 'Format Results' and 'Add Results'.  I use these when processing new race results and updating the database.  They are no use to regular users, and can crash the program or mess up the database if used improperly.  
 
-1. 'Format Results' : Used to match race results to runners in the database. Input is a CSV file of a race. The program performs a fuzzy string match for each runner's name and attempts to locate them in the database.  The results of this are displayed for the user to confirm.  In addition, if no match is found, the user will have to either manually match them or add them. Once confirmed, a properly formatted CSV file with each runner's database ID added to their result.
+1. 'Format Results' : Used to match race results to runners in the database. Input is a CSV file of a race. The program performs a fuzzy string match for each runner's name and attempts to locate them in the database.  The results of this are displayed for the user to confirm.  In addition, if no match is found, the user will have to either manually match them or add them. Once confirmed, a properly formatted CSV file with each runner's database ID is added to their result.
 
 2. 'Add Results' : Upload processed results to the database. This reads a CSV file of a processed race, identifies each runner from the database ID appended by the 'Format Results' function, and updates the database with their result.
 
@@ -22,7 +22,7 @@ The program requires a few dependencies, and if one just wants to browse the dat
 
 ## Speed Ratings
 
-Besides just storing results for runners in the database, I also store a "Speed Rating".  This is the method which I use to rank runners based off of Cross-Country results.  The secret process of Speed Rating generation is done by me between the 'Format Results' step and the 'Add Results' step.  The original Speed Ratings were developed in NY by Bill Meylan, an avid follower of cross country.  I developed my own modified version for extension to collegiate race distances. Explanation is kind of lengthy ([a brief overview can be found here](http://www.tullyrunners.com/Data/Articles/refrunner.htm)) but suffice to say it is about 50% science, 50% art.  When looking at the Speed Ratings one only needs to now that a difference of 1 corresponds to a difference of 5 (3.75) seconds in a race for men (women), and the higher the rating, the better.
+Besides just storing results for runners in the database, I also store a "Speed Rating".  This is the method which I use to rank runners based off of Cross-Country results.  The secret process of Speed Rating generation is done by me between the 'Format Results' step and the 'Add Results' step.  The original Speed Ratings were developed in NY by Bill Meylan, an avid follower of cross country.  I developed my own modified version for extension to collegiate race distances. Explanation is kind of lengthy ([a brief overview can be found here](http://www.tullyrunners.com/Data/Articles/refrunner.htm)) but suffice to say it is about 50% science, 50% art.  When looking at the Speed Ratings one only needs to know that a difference of 1 corresponds to a difference of 5 (3.75) seconds in a race for men (women), and the higher the rating, the better.
 
 ## Dependencies
 

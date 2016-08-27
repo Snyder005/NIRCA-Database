@@ -48,6 +48,8 @@ New Features:
 
 Todo:
 
+    * Add raises for exceptions for failed database queries
+
     * QOL changes for printing runners, results and teams
 
     * Build GUI for Query. (5.0)
@@ -81,6 +83,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, backref, sessionmaker, reconstructor
 from scipy import stats
 from contextlib import contextmanager
+from ndb_errors import SessionError
 
 Base = declarative_base()
 Session = sessionmaker()
@@ -92,7 +95,7 @@ def db_session(database):
     Args:
         database (str): Database filepath.
     """
-    
+
     try:
         engine = sql.create_engine(database, echo=False)
         Base.metadata.create_all(engine)
@@ -100,9 +103,9 @@ def db_session(database):
         session = Session()
         yield session
         session.commit()
-    except:
+    except Exception as e:
         session.rollback()
-        raise Exception # Placeholder
+        raise e
     finally:
         session.close()
 
@@ -517,30 +520,6 @@ class Sim:
         #    runner.show_result()
         #
         #return print_string
-
-################################################################################
-##
-## Functions to incorporate into a new Database/Query Class
-##
-################################################################################
-
-def get_team_match(session, lookup_name, threshold=0.8):  ## Move to matching module
-
-    team_list = get_teams(session)
-
-    matches = []
-    for team in team_list:
-        cost = jf.jaro_distance(unicode(lookup_name), unicode(team.name))
-
-        if cost < threshold:
-            matches.append((team, cost))
-
-    if len(matches) > 1:
-        matches.sort(key=lambda x: x[1], reverse=True)
-    elif len(matches) == 0:
-        raise Exception
-
-    return matches[0][0]
     
 
 ################################################################################
@@ -583,8 +562,11 @@ class Race:
 ################################################################################
         
 def main():
-    pass
-    
+
+    with db_session('sqlite:///test.db') as f:
+
+        test = Team.from_db(f)
+        print test[0].name
 
 if __name__ == '__main__':
 
