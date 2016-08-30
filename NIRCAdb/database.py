@@ -1,67 +1,8 @@
-"""NIRCAdb Package Version 7.0rc2 source code.
+"""Database objects for use with the NIRCAdb Package.
 
-This contains the source code for what will be NIRCAdb Version 7.0.  It is
-currently under construction.  Once completed this will serve as base python
-package. Additionally a GUI will be created using the code developed in this
-package. Version 6.1 is a stand alone GUI and is functional, though it can be 
-unstable and is out-of-date. 
-
-Features:
-    Version 6.1 has the following features:
-
-    * Single Runner Querying: Query the database, using a GUI, by runner names. 
-
-    * Multiple Runner Querying: Query the database, using a GUI, filtering by
-          team names, runner status, and runner gender. GUI interface allows 
-          sorting by runner name, team names, runner gender, runner Speed 
-          Rating, and runner status.
-
-    * Team Ranking: Rank multiple teams using the runners' Speed Ratings.
-
-    * Race Simulation: Basic support for simulating races between teams and 
-          displaying average results
-
-    * Result Formatting: Format a list of results from a single race to be
-          processed by hand.
-
-    * Upload Processed Results: Upload processed results and update the
-          database
-
-New Features:  
-    In addition to the above features, Version 7.0 will include the following,
-    some of which will supercede features in Version 6.1.
-
-    * Region Filter: NIRCA region will be added as a filter for multiple runner
-          queries, and simulated races.
-
-    * Roll-over Database: Add functionality to update database for the next 
-          season, i.e., remove inactive runners and remove all results
-
-    * Improved Result Formatting: Improvements to the runner/result matching to
-          improve result formatting.
-
-    * MCMC Result Processing: Processing of results automatically using MCMC
-          techniques.
-
-    * Integrated Results Uploading: Streamline and integrate result formatting,
-          processing, and final upload.
-
-Todo:
-
-    * Add raises for exceptions for failed database queries
-
-    * QOL changes for printing runners, results and teams
-
-    * Build GUI for Query. (5.0)
-
-    * Program and implement MCMC result processing. (3.0)
- 
-    * Fix result formatting, processing and uploading issues. (4.0)
-
-    * Add Result Uploading features to GUI (6.0)
-
-.. NIRCAdb 7.0rc2
-   http://github.com/Snyder005/NIRCAdb
+This contains the database entry Objects Runner, Team and Results, that 
+interface with the NIRCA database.  In addition a context manager is provided
+to allow easy database session use.
 
 """
 
@@ -73,17 +14,16 @@ __version__ = "7.0rc2"
 ##
 ################################################################################
 
-import sys
-import datetime
-
 import sqlalchemy as sql
 import numpy as np
+import datetime
 
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, backref, sessionmaker, reconstructor
 from scipy import stats
 from contextlib import contextmanager
-from ndb_errors import SessionError
+
+from errors import QueryError
 
 Base = declarative_base()
 Session = sessionmaker()
@@ -111,7 +51,7 @@ def db_session(database):
 
 ################################################################################
 ##
-## Database Objects
+## Runner Object
 ##
 ################################################################################
 
@@ -143,6 +83,9 @@ class Runner(Base):
     ## Create one-to-many relationship with Results table
     results = relationship("Result", backref=backref('runner'))
 
+    def __str__(self):
+        return "{0} \n".format(self.name)
+
     @reconstructor
     def init_on_load(self):
         """Initialize instance attributes."""
@@ -152,7 +95,22 @@ class Runner(Base):
         self._races_simulated = False
 
     @classmethod
-    def from_db(cls, session, names = [], team_list=[], gender=None, status=None):        
+    def from_db(cls, session, names = [], team_list=[], gender=None, status=None):
+        """Initialize Runner objects from database using a query.
+
+        Args:
+            session (Session): Database session object.
+            names (list, optional): List of names (str) to filter by. Defaults 
+                to empty list.
+            team_list (list, optional): List of teams (str) to filter by. Defaults
+                to empty list.
+            gender (str, optional): Gender filter choice. Defaults to 'None'.
+            status (bool, optional): Status filter choice. Defaults to 'None'.
+
+        Returns:
+            Either a list of Runner objects, or a single Runner object, depending
+            on results of the query.
+        """
 
         query = session.query(cls)
 
@@ -181,13 +139,13 @@ class Runner(Base):
 
             if len(team_list) == 1:
                 query = query.join(Team).filter(Team.name == team_list[0])
-            elif len(team_choice) > 1:
+            elif len(team_list) > 1:
                 query = query.join(Team).filter(Team.name.in_(team_list))
 
-        ## Determine proper return value
+        ## Check that query returned non-empty list
         runners = query.all()
-        if len(runners) == 1:
-            return runners[0]
+        if len(runners) == 0:
+            raise QueryError('No runners found.')
         else:
             return runners
 
@@ -248,7 +206,8 @@ class Runner(Base):
 
         Args:
             num_races (int): Number of desired race simulations.
-            mode (str): Method used to generate new Speed Ratings.
+            mode (str, optional): Method used to generate new Speed Ratings.
+                Defaults to 'maxwell'.
             **kwargs: Keyword arguments for 'mode'.
 
         Returns:
@@ -284,9 +243,11 @@ class Runner(Base):
 
         return self.ratings_list, self.average
 
-    def __str__(self):
-        return "{0} \n".format(self.name)
-        
+################################################################################
+##
+## Result Object
+##
+################################################################################
 
 class Result(Base):
     """Represents a race result by a particular runner, contained in 
@@ -326,8 +287,14 @@ class Result(Base):
         attributes = [self.name, str(self.date), self.distance, self.time,
                       "{:.2f}".format(self.rating)]
 
-        return "{:<30} {:<10} {:<10} {:<10} {:>8} \n".format(*row)
+        return "{:<30} {:<10} {:<10} {:<10} {:>8} \n".format(*attributes)
 
+################################################################################
+##
+## Team Object
+##
+################################################################################
+    
 class Team(Base):
     """Represents a NIRCA club team contained in the database.
 
@@ -357,11 +324,14 @@ class Team(Base):
 
         Args:
             session (Session): Database Session object.
-            names (list): Team name(s) to filter by.
-            regions (list): Region(s) to filter by.
+            names (list, optional): Team name(s) (str)  to filter by. 
+                Defaults to empty list.
+            regions (list, optional ): Region(s) (str) to filter by. 
+                Defaults to empty list.
 
-        Raises:
-            
+        Returns:
+            Either list of Team objects or single Team object, depending 
+            on results of the query.            
         """
 
         ## Check that list objects are given
@@ -386,8 +356,8 @@ class Team(Base):
 
         ## Determine proper return value
         teams = query.all()
-        if len(teams) == 1:
-            return teams[0]
+        if len(teams) == 0:
+            raise QueryError('No teams found.')
         else:
             return teams
 
@@ -411,10 +381,15 @@ class Team(Base):
     def races_simulated(self):
         return self._races_simulated
 
-    def sort_by_rating(self):
-        """Sort runners on the team by Speed Rating from highest to lowest."""
-        
-        self.runners.sort(key=lambda x:float(x.rating), reverse=True)
+    def sort_runners(self, key):
+        """Sort runners depending on specified key."""
+
+        if key == 'rating':
+            self.runners.sort(key=lambda x: float(x.rating), reverse=True)
+        elif key == 'name':
+            self.runners.sort(key=lambda x: x.name)
+        else:
+            raise KeyError("'{0}' is not a valid sorting key.".format(key))
 
     def size(self):
         """Determine number of runners on the team.
@@ -439,88 +414,6 @@ class Team(Base):
 
         for runner in self.runners:
             runner.sim_races(num_races, mode, **kwargs)          
-
-################################################################################
-##
-## Simulator Object
-##
-################################################################################
-
-class Sim:
-    """Represents a race simulation consisting of runners from a team(s).
-
-    Attributes:
-        teams (list): List of teams in the race.
-        runners (list): List of all runners in the race. May be empty.
-    """
-
-    def __init__(self, teams):
-
-        ## Format teams to include only top 7 and ignore ineligible teams
-        if not isinstance(teams, list):
-            teams = [teams]
-        for team in teams:
-            team.sort_by_rating()
-        self.teams = [Team(id=t.id, name=t.name, runners=t.runners[0:7]) \
-                      for t in teams if t.size() >=5]
-
-        self.runners = []
-        self._is_simulated = False
-
-    @property
-    def is_simulated(self):
-        return self._is_simulated
-
-    def run(self, num_races, mode='maxwell', **kwargs):
-        """Simulate a number of races between teams.
-
-        Args:
-            num_races (int): Number of desired race simulations.
-            mode (str): Method used to generate new Speed Ratings.
-            **kwargs: Keyword arguments for 'mode'.
-        """
-            
-
-        ## Generates ratings for every runner on each team
-        for team in self.teams:
-            team.sim_races(num_races, mode, **kwargs)
-
-        self.runners = [runner for team in self.teams for runner in \
-                        team.runners]
-
-        ## For each race calculate each teams score
-        for i in range(num_races):
-            self.runners.sort(key=lambda x: x.ratings_list[i], reverse=True)
-            for team in self.teams:
-                places = [1 + self.runners.index(runner) for runner \
-                          in self.runners if team.name == runner.team.name]
-                team.result_list.append([0, sum(places[:5])])
-                
-            self.teams.sort(key=lambda x: x.result_list[i][1])
-            
-            for team in self.teams:
-                team.result_list[i][0] = self.teams.index(team) + 1
-
-        ## Calculate the average score for each team
-        for team in self.teams:
-            team._average = round(np.mean([result[1] for result in \
-                                          team.result_list]))
-            
-        self.teams.sort(key=lambda x: x.average)
-        self._is_simulated = True
-
-        ## Legacy code to print to Qt display widget
-        #print_string = ''
-        #for i, team in enumerate(self.teams):
-        #    print_string += '\n' + str(i+1).rjust(6) + ' ' + \
-        #    team.show_result()
-        #print_string += '\n'
-        #for i, runner in enumerate(self.runners):
-        #    print_string += '\n' + str(i+1).rjust(6) + '  ' + \
-        #    runner.show_result()
-        #
-        #return print_string
-    
 
 ################################################################################
 ##

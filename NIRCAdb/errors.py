@@ -15,7 +15,7 @@ class Error(Exception):
     """Base class for other exceptions."""
     pass
 
-class SearchError(Error):
-    """Raised when a fuzzy string search fails to return a match."""
+class QueryError(Error):
+    """Raised when a SQLite query returns an empty list."""
     pass
 
