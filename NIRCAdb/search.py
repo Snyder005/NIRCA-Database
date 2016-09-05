@@ -28,7 +28,7 @@ def team_search(name_search, limit=3, **kwargs):
     Args:
         session (Session): Database session object.
         name_search (str): Team name to search for.
-        thershold (int, optional): Levenshtein ratio cutoff.  Defaults to 
+        threshold (int, optional): Levenshtein ratio cutoff.  Defaults to 
             80.
 
     Returns:
