@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 """
 In this example the SQLAlchemy ORM capabilities are shown in conjunction
 with the NIRCA database to query the database for a team and print some of 

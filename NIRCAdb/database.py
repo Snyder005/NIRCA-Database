@@ -182,24 +182,24 @@ class Runner(Base):
         session.add(result)
 
         ## Update Speed Rating in database
-        if runner.rating == None or runner.status == False:
-            runner.status = True
-            runner.rating = round(result.rating, 3)
+        if self.rating == None or self.status == False:
+            self.status = True
+            self.rating = round(result.rating, 3)
         else:
-            diff = abs(result.rating - runner.rating)
+            diff = abs(result.rating - self.rating)
             if diff >= 40:
-                new = max(result.rating, runner.rating)*0.9 + \
-                      min(result.rating, runner.rating)*0.1
+                new = max(result.rating, self.rating)*0.9 + \
+                      min(result.rating, self.rating)*0.1
             elif 30 <= diff < 40:
-                new = max(result.rating, runner.rating)*0.85 + \
-                      min(result.rating, runner.rating)*0.15
+                new = max(result.rating, self.rating)*0.85 + \
+                      min(result.rating, self.rating)*0.15
             elif 20 < diff < 30:
-                new = max(result.rating, runner.rating)*0.8 + \
-                      min(result.rating, runner.rating)*0.75
+                new = max(result.rating, self.rating)*0.8 + \
+                      min(result.rating, self.rating)*0.75
             else:
-                new = max(result.rating, runner.rating)*0.75 + \
-                      min(result.rating, runner.rating)*0.25
-            self.rating = round(new_rating, 3)
+                new = max(result.rating, self.rating)*0.75 + \
+                      min(result.rating, self.rating)*0.25
+            self.rating = round(new, 3)
 
     def sim_races(self, num_races, mode='maxwell', **kwargs):
         """Simulate Speed Ratings based on a particular method.
@@ -434,19 +434,65 @@ class Race:
         filename (str): Name of file with race results
     """
 
-    def __init__(self, name, date, distance):
+    def __init__(self, name, date, distance, results=[]):
 
         self.name = name
         self.date = date
         self.distance = distance
+        self.results = results
+        self._is_processed = False
+
+    @classmethod
+    def from_csv(cls, resultfile):
+
+        with open(resultfile) as f:
+
+            data = []
+            results = []
+            lines = f.readlines()
+            
+            for line in lines:
+                data.append(str.split(line, ','))
+
+            name = data[0][0]
+            distance = data[0][2]
+            racedate = data[0][1]
+            date = datetime.date(int(racedate[6:]), int(racedate[3:5]),
+                                      int(racedate[:2]))
+
+            for line in data[1:]:
+
+                time = float(line[2])
+                
+                new = Result(name = name,
+                             date = date,
+                             distance = distance,
+                             runner_id = line[0],
+                             rating = float(line[3]),
+                             time = "{0}:{1:>05.2f}".format(int(time/60),
+                                                            time % 60.))
+                results.append(new)
+
+            return cls(name, date, distance, results)
+
+    @property
+    def is_processed(self):
+        return self._is_processed
 
     def generate_ratings(self):
         """Generate ratings using a MCMC technique."""
         pass
         
-    def export_to_database(self):
+    def process(self, session):
         """Export ratings to a SQL database."""
-        pass
+
+        for result in self.results:
+            runner = session.query(Runner).\
+                     filter(Runner.id == result.runner_id).first()
+            runner.add_result(session, result)
+            print "Result for {0} added".format(runner.name)
+
+        self._is_processed = True
 
 ################################################################################
 ##

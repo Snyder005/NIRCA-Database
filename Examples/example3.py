@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 """
 In this example the fuzzy string matching functionality of the NIRCAdb
 package is demonstrated as well as additional SQLAlchemy ORM functions.
