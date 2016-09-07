@@ -69,6 +69,7 @@ from database import Runner
 from database import Team
 from database import Result
 from database import Race
+from database import REGIONS
 from database import db_session
 
 __version__ = "7.0rc2"

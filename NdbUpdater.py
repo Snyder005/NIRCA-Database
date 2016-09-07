@@ -2,8 +2,13 @@
 
 import sys
 import NIRCAdb as ndb
+import argparse
+import copy
+
+from NIRCAdb import search as ndbsearch
 from PyQt4 import QtCore, QtGui
 
+DATABASE = None
 
 ################################################################################
 ##
@@ -29,13 +34,217 @@ class UpdateWizard(QtGui.QWizard):
 
         self.setStartId(self.PageIntro)
 
-        
-
         self.setWindowTitle("Update Wizard")
 
 ################################################################################
 ##
-## Intro Page
+## Change Match Dialog
+##
+################################################################################
+
+class ChangeMatchDialog(QtGui.QDialog):
+
+    def __init__(self, name, database_names):
+        super(ChangeMatchDialog, self).__init__()
+
+        ## Create QWidget objects
+        self.selectLabel = QtGui.QLabel('Select New')
+        self.nameLabel = QtGui.QLabel('Name: {0}'.format(name))
+     
+        self.nameComboBox = QtGui.QComboBox()
+        self.nameComboBox.addItems(sorted(database_names))
+
+        self.buttons = QtGui.QDialogButtonBox(QtGui.QDialogButtonBox.Ok |
+                                              QtGui.QDialogButtonBox.Cancel,
+                                              QtCore.Qt.Horizontal, self)
+
+        ## Connect Signals and Slots
+        self.buttons.accepted.connect(self.accept)
+        self.buttons.rejected.connect(self.reject)
+
+        ## Create Layout
+        layout = QtGui.QVBoxLayout()
+        layout.addWidget(self.nameLabel)
+        layout.addWidget(self.selectLabel)
+        layout.addWidget(self.nameComboBox)
+        layout.addWidget(self.buttons)
+
+        self.setLayout(layout)
+
+    @staticmethod
+    def getMatch(name, database_names):
+        dialog = ChangeMatchDialog(name, database_names)
+        result = dialog.exec_()
+        new = str(dialog.new_match())
+        return (new, result == QtGui.QDialog.Accepted)
+
+    def new_match(self):
+
+        new_name = self.nameComboBox.currentText()
+        return new_name
+
+################################################################################
+##
+## Add Team Dialog
+##
+################################################################################
+
+class AddTeamDialog(QtGui.QDialog):
+
+    def __init__(self, name):
+        super(AddTeamDialog, self).__init__()
+
+        ## Create QWidget objects
+        self.newLabel = QtGui.QLabel('Add Team: {0}'.format(name))
+        self.newLineEdit = QtGui.QLineEdit()
+        self.regionLabel = QtGui.QLabel('Select Region')
+        self.regionComboBox = QtGui.QComboBox()
+
+        region_items = copy.deepcopy(ndb.REGIONS)
+        region_items.sort()
+        region_items.insert(0, "")
+        self.regionComboBox.addItems(region_items)
+
+        self.buttons = QtGui.QDialogButtonBox(QtGui.QDialogButtonBox.Ok |
+                                              QtGui.QDialogButtonBox.Cancel,
+                                              QtCore.Qt.Horizontal, self)
+
+        ## Connect Signals and Slots
+        self.buttons.accepted.connect(self.add)
+        self.buttons.rejected.connect(self.reject)
+
+        ## Create Layout
+        layout = QtGui.QVBoxLayout()
+        layout.addWidget(self.newLabel)
+        layout.addWidget(self.newLineEdit)
+        layout.addWidget(self.regionLabel)
+        layout.addWidget(self.regionComboBox)
+        layout.addWidget(self.buttons)
+
+        self.setLayout(layout)
+
+    @staticmethod
+    def addTeam(name):
+        dialog = AddTeamDialog(name)
+        result = dialog.exec_()
+        new = str(dialog.new_team())
+        return (new, result == QtGui.QDialog.Accepted)
+
+    @QtCore.pyqtSlot()
+    def add(self):
+
+        with ndb.db_session(DATABASE) as session:
+
+            name = str(self.newLineEdit.text())
+            region = str(self.regionComboBox.currentText())
+            new_team = ndb.Team(name=name, region=region)
+            new_team.add_to_db(session)
+
+        self.accept()
+
+    def new_team(self):
+
+        new = self.newLineEdit.text()
+        return new
+
+################################################################################
+##
+## Multi-Match Display
+##
+################################################################################
+
+class MultiMatchDisplay(QtGui.QWidget):
+
+    matches_changed = QtCore.pyqtSignal(int)
+
+    def __init__(self, matches, database_names, parent=None):
+        super(MultiMatchDisplay, self).__init__()
+
+        self.database_names = database_names
+        self._matches = matches
+
+        ## Initialize QSignalMappers
+        self.selectSignalMapper = QtCore.QSignalMapper(self)
+        self.addSignalMapper = QtCore.QSignalMapper(self)
+
+        ## Create QWidget objects
+        self.nameLabel = QtGui.QLabel('Names: ')
+        self.matchLabel = QtGui.QLabel('Matched Name: ')
+        self.nameLabels = []
+        self.nameLineEdits = []
+        self.newButtons = []
+        self.addButtons = []
+
+        ## Create grid layout
+        self.grid = QtGui.QGridLayout()
+        self.grid = QtGui.QGridLayout()
+        self.grid.setSpacing(20)
+        self.grid.addWidget(self.nameLabel, 1, 0)
+        self.grid.addWidget(self.matchLabel, 1, 1)
+
+        ## Populate grid
+        for i, match in enumerate(matches):
+
+            nameLabel = QtGui.QLabel(match[0])
+            nameLineEdit = QtGui.QLineEdit(match[1])
+            nameLineEdit.setReadOnly(True)
+
+            newButton = QtGui.QPushButton('Select')
+            self.selectSignalMapper.setMapping(newButton, i)
+            newButton.clicked.connect(self.selectSignalMapper.map)
+
+            addButton = QtGui.QPushButton('Add')
+            self.addSignalMapper.setMapping(addButton, i)
+            addButton.clicked.connect(self.addSignalMapper.map)
+
+            self.nameLabels.append(nameLabel)
+            self.nameLineEdits.append(nameLineEdit)
+            self.newButtons.append(newButton)
+            self.addButtons.append(addButton)
+
+            self.grid.addWidget(nameLabel, i+2, 0)
+            self.grid.addWidget(nameLineEdit, i+2, 1)
+            self.grid.addWidget(newButton, i+2, 2)
+            self.grid.addWidget(addButton, i+2, 3)
+
+        ## Connect Signals and Slots 
+        self.selectSignalMapper.mapped.connect(self.modify)
+        self.addSignalMapper.mapped.connect(self.add)
+
+        self.setLayout(self.grid)
+
+    @QtCore.pyqtProperty(list)
+    def matches(self):
+        return self._matches
+
+    def setMatch(self, index, new_match):
+        name = self.matches[index][0]
+        self.nameLineEdits[index].setText(new_match)
+        self._matches[index] = (name, new_match)
+        self.matches_changed.emit(index)
+
+    def modify(self, index):
+
+        ## Select new match using dialog
+        new_match, ok = ChangeMatchDialog.getMatch(self.nameLabels[index].text(),
+                                                 self.database_names)
+
+        ## Check if valid and update
+        if ok:
+            self.setMatch(index, new_match)
+
+    def add(self, index):
+
+        ## Add new match using dialog
+        new_match, ok = AddTeamDialog.addTeam(self.nameLabels[index].text())
+
+        ## Check if valid and update
+        if ok:
+            self.setMatch(index, new_match)
+
+################################################################################
+##
+## Intro Wizard Page
 ##
 ################################################################################
 
@@ -91,7 +300,7 @@ class IntroPage(QtGui.QWizardPage):
         self.grid.addWidget(self.distanceComboBox, 5, 1)
         self.grid.addWidget(self.fileButton, 6, 0)
         self.grid.addWidget(self.fileEdit, 6, 1)        
-        self.setLayout(grid)
+        self.setLayout(self.grid)
 
         ## Register fields
         self.registerField('race_name*', self.nameEdit)
@@ -110,7 +319,7 @@ class IntroPage(QtGui.QWizardPage):
                                    filter='Text Files (*.csv)',
                                    selectedFilter='Text Files (*.csv)')
 
-        ## Check if non-empty and update
+        ## Check if valid and update
         if filename:
             self.fileEdit.setText(filename)
             
@@ -127,20 +336,11 @@ class TeamMatchPage(QtGui.QWizardPage):
         super(TeamMatchPage, self).__init__(parent)
 
         ## Set up scroll bars
-        self.container = QtGui.QWidget()
         self.scroll = QtGui.QScrollArea()
         self.scroll.setWidgetResizable(False)
 
         ## Create QWidget objects
-        self.nameLabel = QtGui.QLabel('Names: ')
-        self.matchLabel = QtGui.QLabel('Matched Name: ')
         self.confirmCheckBox = QtGui.QCheckBox('Confirm')
-
-        ## Create Layout
-        self.grid = QtGui.QGridLayout()
-        self.grid.setSpacing(20)
-        self.grid.addWidget(self.nameLabel, 1, 0)
-        self.grid.addWidget(self.matchLabel, 1, 1)
 
         ## Register fields
         self.registerField('team_confirm*', self.confirmCheckBox)
@@ -148,7 +348,7 @@ class TeamMatchPage(QtGui.QWizardPage):
     def initializePage(self):
 
         ## Read result CSV file
-        filename = self.field('filename')
+        filename = self.field('filename').toString()
         team_names = set()
         
         with open(filename, 'r') as f:
@@ -160,52 +360,33 @@ class TeamMatchPage(QtGui.QWizardPage):
 
         ## Query database for list of teams
         with ndb.db_session(DATABASE) as session:
-            database_teams = Team.from_db(session)
+            database_teams = ndb.Team.from_db(session)
+            self.database_team_names = [team.name for team in database_teams]
 
             team_matches = []
             for team_name in team_names:
 
-                team_match = ndb.search.team_search(team_name, limit=1,
-                                                    team_list=database_teams)[0]
+                team_match = ndbsearch.team_search(team_name, limit=1,
+                                                   team_list=database_teams)[0]
                 
                 
-                team_matches.append((team_name, team_match.name))
+                team_matches.append((team_name, team_match[0].name))
+        
 
-        ## Set-up match displays
-        signalMapper = QtGui.QSignalMapper(self)
-        self.matchDisplays = []
-
-        for i, team_match in enumerate(team_matches):
-
-            nameDisplay = QtGui.QLabel(team_match[0])
-            matchDisplay = QtGui.LineEdit(team_match[1])
-            matchDisplay.setReadOnly(True)
-            
-            newteamButton = QtGui.QPushButton('Select New Team')
-            signalMapper.setMapping(newteamButton, i)
-            newteamButton.clicked.connect(signalMapper.map)
-
-            self.matchDisplays.append(matchDisplay)
-            
-            self.grid.addWidget(nameDisplay, i+2, 0)
-            self.grid.addWidget(matchDisplay, i+2, 1)
-            self.grid.addWidget(newteamButton, i+2, 2)
-
-        signalMapper.mapped.connect(self.modify)
-        self.grid.addWidget(self.confirmCheckBox, len(team_matches)+3, 0)
+        ## Create a MultiMatchDisplay
+        self.teammatchesDisplay = MultiMatchDisplay(team_matches,
+                                                    self.database_team_names)
 
         ## Finalize scroll area
-        self.container.setLayout(self.grid)
-        self.scroll.setWidget(self.container)
+        self.scroll.setWidget(self.teammatchesDisplay)
         vLayout = QtGui.QVBoxLayout(self)
         vLayout.addWidget(self.scroll)
+        vLayout.addWidget(self.confirmCheckBox)
         self.setLayout(vLayout)
 
-    def modify(self, index):
-        pass
+        self.registerField('team_matches', self.teammatchesDisplay, 'matches')
             
-
-
+            
 ################################################################################
 ##
 ## Runner Match Page
@@ -213,7 +394,37 @@ class TeamMatchPage(QtGui.QWizardPage):
 ################################################################################
 
 class RunnerMatchPage(QtGui.QWizardPage):
-    pass
+
+    def __init__(self, parent=None):
+        super(RunnerMatchPage, self).__init__(parent)
+
+        ## Set up scroll bars
+        self.scroll = QtGui.QScrollArea()
+        self.scroll.setWidgetResizable(False)
+
+        ## Create QWidget objects
+        self.confirmCheckBox = QtGui.QCheckBox('Confirm')
+
+        ## Register fields
+        self.registerField('runner_check*', self.confirmCheckBox)
+
+    def initializePage(self):
+
+        team_matches = self.field('team_matches').toPyObject()
+
+#        ## Construct team dictionary
+#        for team_name, database_match in team_matches:
+#            team_dict[team_name] = database_match
+
+#            with ndb.db_session(DATABASE) as session:
+#                try:
+#                    ndb.Team.from_db(names=database_match)
+#                except QueryError:
+#                    print database_match
+                    
+                    
+        
+#        Construct 
 
 ################################################################################
 ##
@@ -248,7 +459,10 @@ class ConclusionPage(QtGui.QWizardPage):
 ##
 ################################################################################
 
-def main():
+def main(database):
+
+    global DATABASE
+    DATABASE = 'sqlite:///{0}'.format(database)
 
     app = QtGui.QApplication(sys.argv)
     wiz = UpdateWizard()
@@ -257,4 +471,11 @@ def main():
 
 if __name__ == '__main__':
 
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-d', '--database', help='database to modify.',
+                        default='test.db')
+
+    args = parser.parse_args()
+    database = args.database
+
+    main(database)

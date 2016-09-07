@@ -8,6 +8,9 @@ to allow easy database session use.
 
 __version__ = "7.0rc2"
 
+REGIONS = ['Great Lakes', 'Great Plains', 'Heartland', 'Mid-Atlantic',
+           'Northeast', 'Pacific', 'Southeast']
+
 ################################################################################
 ##
 ## Modules and Packages
@@ -380,6 +383,15 @@ class Team(Base):
     @property
     def races_simulated(self):
         return self._races_simulated
+
+    def add_to_db(self, session):
+        """Add team to database.
+
+        Args:
+            session (Session): Database session object.
+        """
+
+        session.add(self)
 
     def sort_runners(self, key):
         """Sort runners depending on specified key."""
