@@ -129,7 +129,7 @@ class Runner(Base):
         
         else:
             ## Filter by gender
-            if gender in ['Male', 'Female']:
+            if gender in ['M', 'W']:
                 query = query.filter(cls.gender == gender)
 
             ## Filter by status

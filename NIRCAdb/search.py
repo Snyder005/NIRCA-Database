@@ -87,7 +87,7 @@ def runner_search(name_search, limit=5, **kwargs):
     session = None
     runner_list = None
     if "runner_list" in kwargs:
-        runner_list = kwargs['team_list']
+        runner_list = kwargs['runner_list']
     elif "session" in kwargs:
         session = kwargs['session']
         runner_list = Runner.from_db(session)

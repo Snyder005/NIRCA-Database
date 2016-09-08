@@ -38,83 +38,49 @@ class UpdateWizard(QtGui.QWizard):
 
 ################################################################################
 ##
-## Change Match Dialog
+## Change Team Dialog
 ##
 ################################################################################
 
-class ChangeMatchDialog(QtGui.QDialog):
+class ChangeTeamDialog(QtGui.QDialog):
 
     def __init__(self, name, database_names):
-        super(ChangeMatchDialog, self).__init__()
+        super(ChangeTeamDialog, self).__init__()
+
+        self.match = None
 
         ## Create QWidget objects
         self.selectLabel = QtGui.QLabel('Select New')
-        self.nameLabel = QtGui.QLabel('Name: {0}'.format(name))
-     
         self.nameComboBox = QtGui.QComboBox()
         self.nameComboBox.addItems(sorted(database_names))
 
-        self.buttons = QtGui.QDialogButtonBox(QtGui.QDialogButtonBox.Ok |
-                                              QtGui.QDialogButtonBox.Cancel,
-                                              QtCore.Qt.Horizontal, self)
-
-        ## Connect Signals and Slots
-        self.buttons.accepted.connect(self.accept)
-        self.buttons.rejected.connect(self.reject)
-
-        ## Create Layout
-        layout = QtGui.QVBoxLayout()
-        layout.addWidget(self.nameLabel)
-        layout.addWidget(self.selectLabel)
-        layout.addWidget(self.nameComboBox)
-        layout.addWidget(self.buttons)
-
-        self.setLayout(layout)
-
-    @staticmethod
-    def getMatch(name, database_names):
-        dialog = ChangeMatchDialog(name, database_names)
-        result = dialog.exec_()
-        new = str(dialog.new_match())
-        return (new, result == QtGui.QDialog.Accepted)
-
-    def new_match(self):
-
-        new_name = self.nameComboBox.currentText()
-        return new_name
-
-################################################################################
-##
-## Add Team Dialog
-##
-################################################################################
-
-class AddTeamDialog(QtGui.QDialog):
-
-    def __init__(self, name):
-        super(AddTeamDialog, self).__init__()
-
-        ## Create QWidget objects
         self.newLabel = QtGui.QLabel('Add Team: {0}'.format(name))
         self.newLineEdit = QtGui.QLineEdit()
         self.regionLabel = QtGui.QLabel('Select Region')
+        
         self.regionComboBox = QtGui.QComboBox()
-
         region_items = copy.deepcopy(ndb.REGIONS)
         region_items.sort()
         region_items.insert(0, "")
         self.regionComboBox.addItems(region_items)
 
+        self.hline = QtGui.QFrame()
+        self.hline.setFrameShape(QtGui.QFrame.HLine)
+        self.hline.setFrameShadow(QtGui.QFrame.Sunken)
+
         self.buttons = QtGui.QDialogButtonBox(QtGui.QDialogButtonBox.Ok |
                                               QtGui.QDialogButtonBox.Cancel,
                                               QtCore.Qt.Horizontal, self)
 
         ## Connect Signals and Slots
-        self.buttons.accepted.connect(self.add)
+        self.buttons.accepted.connect(self.update)
         self.buttons.rejected.connect(self.reject)
 
         ## Create Layout
         layout = QtGui.QVBoxLayout()
+        layout.addWidget(self.selectLabel)
+        layout.addWidget(self.nameComboBox)
+        layout.addWidget(self.hline)
         layout.addWidget(self.newLabel)
         layout.addWidget(self.newLineEdit)
         layout.addWidget(self.regionLabel)
@@ -124,28 +90,93 @@ class AddTeamDialog(QtGui.QDialog):
         self.setLayout(layout)
 
     @staticmethod
-    def addTeam(name):
-        dialog = AddTeamDialog(name)
+    def getMatch(name, database_names):
+        dialog = ChangeTeamDialog(name, database_names)
         result = dialog.exec_()
-        new = str(dialog.new_team())
+        new = dialog.match
         return (new, result == QtGui.QDialog.Accepted)
 
     @QtCore.pyqtSlot()
-    def add(self):
+    def update(self):
 
-        with ndb.db_session(DATABASE) as session:
+        ## Check if new team needs to be added
+        if self.newLineEdit.isModified():
+            
+            with ndb.db_session(DATABASE) as session:
 
-            name = str(self.newLineEdit.text())
-            region = str(self.regionComboBox.currentText())
-            new_team = ndb.Team(name=name, region=region)
-            new_team.add_to_db(session)
+                name = str(self.newLineEdit.text())
+                region = str(self.regionComboBox.currentText())
+                new_team = ndb.Team(name=name, region=region)
+                new_team.add_to_db(session)
 
+        else:
+            name = str(self.nameComboBox.currentText())
+            
+        self.match = name
         self.accept()
 
-    def new_team(self):
+################################################################################
+##
+## Change Runner Dialog
+##
+################################################################################
 
-        new = self.newLineEdit.text()
-        return new
+class ChangeRunnerDialog(QtGui.QDialog):
+
+    def __init__(self, name, database_names):
+        super(ChangeRunnerDialog, self).__init__()
+
+        self.match = None
+
+        ## Create QWidget objects
+        self.selectLabel = QtGui.QLabel('Select New')
+        self.nameComboBox = QtGui.QComboBox()
+        self.nameComboBox.addItems(sorted(database_names))
+
+        self.newLabel = QtGui.QLabel('Add Runner: {0}'.format(name))
+        self.newLineEdit = QtGui.QLineEdit()
+
+        self.hline = QtGui.QFrame()
+        self.hline.setFrameShape(QtGui.QFrame.HLine)
+        self.hline.setFrameShadow(QtGui.QFrame.Sunken)
+
+        self.buttons = QtGui.QDialogButtonBox(QtGui.QDialogButtonBox.Ok |
+                                              QtGui.QDialogButtonBox.Cancel,
+                                              QtCore.Qt.Horizontal, self)
+
+        ## Connect Signals and Slots
+        self.buttons.accepted.connect(self.update)
+        self.buttons.rejected.connect(self.reject)
+
+        ## Create Layout
+        layout = QtGui.QVBoxLayout()
+        layout.addWidget(self.selectLabel)
+        layout.addWidget(self.nameComboBox)
+        layout.addWidget(self.hline)
+        layout.addWidget(self.newLabel)
+        layout.addWidget(self.newLineEdit)
+        layout.addWidget(self.buttons)
+
+        self.setLayout(layout)
+
+    @staticmethod
+    def getMatch(name, database_names):
+        dialog = ChangeRunnerDialog(name, database_names)
+        result = dialog.exec_()
+        new = dialog.match
+        return (new, result == QtGui.QDialog.Accepted)
+
+    @QtCore.pyqtSlot()
+    def update(self):
+
+        ## Check if new team needs to be added
+        if self.newLineEdit.isModified():
+            name = str(self.newLineEdit.text())
+        else:
+            name = str(self.nameComboBox.currentText())
+            
+        self.match = name
+        self.accept()
 
 ################################################################################
 ##
@@ -158,7 +189,7 @@ class MultiMatchDisplay(QtGui.QWidget):
     matches_changed = QtCore.pyqtSignal(int)
 
     def __init__(self, matches, database_names, parent=None):
-        super(MultiMatchDisplay, self).__init__()
+        super(MultiMatchDisplay, self).__init__(parent)
 
         self.database_names = database_names
         self._matches = matches
@@ -173,7 +204,6 @@ class MultiMatchDisplay(QtGui.QWidget):
         self.nameLabels = []
         self.nameLineEdits = []
         self.newButtons = []
-        self.addButtons = []
 
         ## Create grid layout
         self.grid = QtGui.QGridLayout()
@@ -193,29 +223,38 @@ class MultiMatchDisplay(QtGui.QWidget):
             self.selectSignalMapper.setMapping(newButton, i)
             newButton.clicked.connect(self.selectSignalMapper.map)
 
-            addButton = QtGui.QPushButton('Add')
-            self.addSignalMapper.setMapping(addButton, i)
-            addButton.clicked.connect(self.addSignalMapper.map)
-
             self.nameLabels.append(nameLabel)
             self.nameLineEdits.append(nameLineEdit)
             self.newButtons.append(newButton)
-            self.addButtons.append(addButton)
 
             self.grid.addWidget(nameLabel, i+2, 0)
             self.grid.addWidget(nameLineEdit, i+2, 1)
             self.grid.addWidget(newButton, i+2, 2)
-            self.grid.addWidget(addButton, i+2, 3)
 
         ## Connect Signals and Slots 
         self.selectSignalMapper.mapped.connect(self.modify)
-        self.addSignalMapper.mapped.connect(self.add)
 
         self.setLayout(self.grid)
 
     @QtCore.pyqtProperty(list)
     def matches(self):
         return self._matches
+
+    def setMatch(self, index, new_match):
+        raise NotImplementedError('Subclasses must define setMatch()')
+        name = self.matches[index][0]
+        self.nameLineEdits[index].setText(new_match)
+        self._matches[index] = (name, new_match)
+        self.matches_changed.emit(index)
+
+    def modify(self):
+        raise NotImplementedError('Subclasses must define modify()')
+
+class TeamMultiDisplay(MultiMatchDisplay):
+
+    def __init__(self, matches, database_names, parent=None):
+        super(TeamMultiDisplay, self).__init__(matches, database_names,
+                                               parent)
 
     def setMatch(self, index, new_match):
         name = self.matches[index][0]
@@ -226,17 +265,33 @@ class MultiMatchDisplay(QtGui.QWidget):
     def modify(self, index):
 
         ## Select new match using dialog
-        new_match, ok = ChangeMatchDialog.getMatch(self.nameLabels[index].text(),
+        new_match, ok = ChangeTeamDialog.getMatch(self.nameLabels[index].text(),
                                                  self.database_names)
 
         ## Check if valid and update
         if ok:
             self.setMatch(index, new_match)
 
-    def add(self, index):
+class RunnerMultiDisplay(MultiMatchDisplay):
 
-        ## Add new match using dialog
-        new_match, ok = AddTeamDialog.addTeam(self.nameLabels[index].text())
+    def __init__(self, matches, database_names, parent=None):
+        super(RunnerMultiDisplay, self).__init__(matches, database_names,
+                                               parent)
+
+    def setMatch(self, index, new_match):
+        name = self.matches[index][0]
+        team = self.matches[index][2]
+        time = self.matches[index][3]
+        self.nameLineEdits[index].setText(new_match)
+        self._matches[index] = (name, new_match, team, time)
+        self.matches_changed.emit(index)
+
+    def modify(self, index):
+
+        ## Select new match using dialog
+        new_match, ok = ChangeRunnerDialog.\
+                        getMatch(self.nameLabels[index].text(),
+                                 self.database_names[index])
 
         ## Check if valid and update
         if ok:
@@ -304,10 +359,12 @@ class IntroPage(QtGui.QWizardPage):
 
         ## Register fields
         self.registerField('race_name*', self.nameEdit)
-        self.registerField('date*', self.dateEdit, 'date',
-                           QtGui.QDateEdit.dateChanged)
-        self.registerField('gender*', self.genderComboBox)
-        self.registerField('distance*', self.distanceComboBox)
+        self.registerField('race_date*', self.dateEdit, 'date',
+                           self.dateEdit.dateChanged)
+        self.registerField('race_gender*', self.genderComboBox)
+        self.registerField('race_distance*', self.distanceComboBox,
+                           'currentText', self.distanceComboBox.\
+                           currentIndexChanged)
         self.registerField('filename*', self.fileEdit)
 
     def getFile(self):
@@ -374,8 +431,8 @@ class TeamMatchPage(QtGui.QWizardPage):
         
 
         ## Create a MultiMatchDisplay
-        self.teammatchesDisplay = MultiMatchDisplay(team_matches,
-                                                    self.database_team_names)
+        self.teammatchesDisplay = TeamMultiDisplay(team_matches,
+                                                   self.database_team_names)
 
         ## Finalize scroll area
         self.scroll.setWidget(self.teammatchesDisplay)
@@ -410,21 +467,70 @@ class RunnerMatchPage(QtGui.QWizardPage):
 
     def initializePage(self):
 
+        ## Get race information
+        gender_dict = {1: 'M', 2 : 'W'}
+        race_gender = gender_dict[self.field('race_gender').toPyObject()]
+
+        ## Construct team dictionary
+        team_dict = dict()
         team_matches = self.field('team_matches').toPyObject()
+        for team_name, database_match in team_matches:
+            team_dict[team_name] = database_match
 
-#        ## Construct team dictionary
-#        for team_name, database_match in team_matches:
-#            team_dict[team_name] = database_match
+        ## Read result CSV
+        filename = self.field('filename').toString()
 
-#            with ndb.db_session(DATABASE) as session:
-#                try:
-#                    ndb.Team.from_db(names=database_match)
-#                except QueryError:
-#                    print database_match
-                    
-                    
-        
-#        Construct 
+        runner_info_list = []
+        with open(filename, 'r') as f:
+            data = f.readlines()
+            for row in data:
+                cols = str.split(row, ',')
+                runner_name = cols[0]
+                runner_team_name = team_dict[cols[1]]
+                runner_time = cols[2]
+                runner_info_list.append((runner_name, runner_team_name,
+                                         runner_time))
+
+        ## Query database for list of runners
+        with ndb.db_session(DATABASE) as session:
+            team_list = list(team_dict.values())
+
+            ## Get runners from all teams in the race
+            database_runners = ndb.Runner.from_db(session,
+                                                  team_list=team_list,
+                                                  gender=race_gender)
+
+            runner_matches = []
+            self.database_runner_names = []
+
+            ## Find a database match for each runner in the results file
+            for runner_info in runner_info_list:
+
+                runner_list = [runner for runner in database_runners if
+                               runner.team.name == runner_info[1]]
+
+                runner_match = ndbsearch.runner_search(runner_info[0], limit=1,
+                                                       runner_list=runner_list)[0]
+
+                runner_matches.append((runner_info[0], runner_match[0].name,
+                                       runner_info[1], runner_info[2]))
+                self.database_runner_names.append([runner.name for runner in \
+                                                   runner_list])
+
+        ## Create a MultiMatchDisplay
+        self.runnermatchesDisplay = RunnerMultiDisplay(runner_matches,
+                                                       self.database_runner_names)
+
+        ## Finalize scroll area
+        self.scroll.setWidget(self.runnermatchesDisplay)
+        vLayout = QtGui.QVBoxLayout(self)
+        vLayout.addWidget(self.scroll)
+        vLayout.addWidget(self.confirmCheckBox)
+        self.setLayout(vLayout)
+
+        self.registerField('runner_matches', self.runnermatchesDisplay,
+                           'matches')
+
 
 ################################################################################
 ##
