@@ -6,6 +6,7 @@ import argparse
 import copy
 
 from NIRCAdb import search as ndbsearch
+from NIRCAdb import errors as ndberrors
 from PyQt4 import QtCore, QtGui
 
 DATABASE = None
@@ -191,61 +192,77 @@ class MultiMatchDisplay(QtGui.QWidget):
     def __init__(self, matches, database_names, parent=None):
         super(MultiMatchDisplay, self).__init__(parent)
 
+        self._perfect = []
+        self._imperfect = []
         self.database_names = database_names
-        self._matches = matches
 
-        ## Initialize QSignalMappers
-        self.selectSignalMapper = QtCore.QSignalMapper(self)
-        self.addSignalMapper = QtCore.QSignalMapper(self)
+        ## Separate perfect matches and imperfect matches
+        for match in matches:
+            if match[2] == 100:
+                self._perfect.append(match)
 
-        ## Create QWidget objects
-        self.nameLabel = QtGui.QLabel('Names: ')
-        self.matchLabel = QtGui.QLabel('Matched Name: ')
-        self.nameLabels = []
-        self.nameLineEdits = []
-        self.newButtons = []
+            else:
+                self._imperfect.append(match)
 
-        ## Create grid layout
-        self.grid = QtGui.QGridLayout()
-        self.grid = QtGui.QGridLayout()
-        self.grid.setSpacing(20)
-        self.grid.addWidget(self.nameLabel, 1, 0)
-        self.grid.addWidget(self.matchLabel, 1, 1)
+        ## If there are imperfect matches construct display
+        if len(self._imperfect) > 0:
 
-        ## Populate grid
-        for i, match in enumerate(matches):
+            ## Initialize QSignalMappers
+            self.selectSignalMapper = QtCore.QSignalMapper(self)
+            self.addSignalMapper = QtCore.QSignalMapper(self)
 
-            nameLabel = QtGui.QLabel(match[0])
-            nameLineEdit = QtGui.QLineEdit(match[1])
-            nameLineEdit.setReadOnly(True)
+            ## Create QWidget objects
+            self.nameLabel = QtGui.QLabel('Names: ')
+            self.matchLabel = QtGui.QLabel('Matched Name: ')
+            self.nameLabels = []
+            self.nameLineEdits = []
+            self.newButtons = []
 
-            newButton = QtGui.QPushButton('Select')
-            self.selectSignalMapper.setMapping(newButton, i)
-            newButton.clicked.connect(self.selectSignalMapper.map)
+            
+            ## Create grid layout
+            self.grid = QtGui.QGridLayout()
+            self.grid.setSpacing(20)
+            self.grid.addWidget(self.nameLabel, 1, 0)
+            self.grid.addWidget(self.matchLabel, 1, 1)
 
-            self.nameLabels.append(nameLabel)
-            self.nameLineEdits.append(nameLineEdit)
-            self.newButtons.append(newButton)
+            ## Populate grid
+            for i, match in enumerate(self._imperfect):
 
-            self.grid.addWidget(nameLabel, i+2, 0)
-            self.grid.addWidget(nameLineEdit, i+2, 1)
-            self.grid.addWidget(newButton, i+2, 2)
+                nameLabel = QtGui.QLabel(match[0])
+                nameLineEdit = QtGui.QLineEdit(match[1])
+                nameLineEdit.setReadOnly(True)
 
-        ## Connect Signals and Slots 
-        self.selectSignalMapper.mapped.connect(self.modify)
+                newButton = QtGui.QPushButton('Select')
+                self.selectSignalMapper.setMapping(newButton, i)
+                newButton.clicked.connect(self.selectSignalMapper.map)
 
-        self.setLayout(self.grid)
+                self.nameLabels.append(nameLabel)
+                self.nameLineEdits.append(nameLineEdit)
+                self.newButtons.append(newButton)
+
+                self.grid.addWidget(nameLabel, i+2, 0)
+                self.grid.addWidget(nameLineEdit, i+2, 1)
+                self.grid.addWidget(newButton, i+2, 2)
+
+            ## Connect Signals and Slots 
+            self.selectSignalMapper.mapped.connect(self.modify)
+
+            self.setLayout(self.grid)
+
+        ## Else all teams matched perfectly
+        else:
+
+            self.goodLabel = QtGui.QLabel('All teams found!')
+            self.grid = QtGui.QGridLayout()
+            self.grid.addWidget(self.goodLabel)
+            self.setLayout(self.grid)
 
     @QtCore.pyqtProperty(list)
     def matches(self):
-        return self._matches
+        return self._perfect + self._imperfect
 
     def setMatch(self, index, new_match):
         raise NotImplementedError('Subclasses must define setMatch()')
-        name = self.matches[index][0]
-        self.nameLineEdits[index].setText(new_match)
-        self._matches[index] = (name, new_match)
-        self.matches_changed.emit(index)
 
     def modify(self):
         raise NotImplementedError('Subclasses must define modify()')
@@ -257,9 +274,9 @@ class TeamMultiDisplay(MultiMatchDisplay):
                                                parent)
 
     def setMatch(self, index, new_match):
-        name = self.matches[index][0]
+        name = self._imperfect[index][0]
         self.nameLineEdits[index].setText(new_match)
-        self._matches[index] = (name, new_match)
+        self._imperfect[index] = (name, new_match, 100)
         self.matches_changed.emit(index)
 
     def modify(self, index):
@@ -279,11 +296,11 @@ class RunnerMultiDisplay(MultiMatchDisplay):
                                                parent)
 
     def setMatch(self, index, new_match):
-        name = self.matches[index][0]
-        team = self.matches[index][2]
-        time = self.matches[index][3]
+        name = self._imperfect[index][0]
+        team = self._imperfect[index][3]
+        time = self._imperfect[index][4]
         self.nameLineEdits[index].setText(new_match)
-        self._matches[index] = (name, new_match, team, time)
+        self._imperfect[index] = (name, new_match, 100, team, time)
         self.matches_changed.emit(index)
 
     def modify(self, index):
@@ -427,7 +444,8 @@ class TeamMatchPage(QtGui.QWizardPage):
                                                    team_list=database_teams)[0]
                 
                 
-                team_matches.append((team_name, team_match[0].name))
+                team_matches.append((team_name, team_match[0].name,
+                                     team_match[1]))
         
 
         ## Create a MultiMatchDisplay
@@ -474,7 +492,7 @@ class RunnerMatchPage(QtGui.QWizardPage):
         ## Construct team dictionary
         team_dict = dict()
         team_matches = self.field('team_matches').toPyObject()
-        for team_name, database_match in team_matches:
+        for team_name, database_match, ratio in team_matches:
             team_dict[team_name] = database_match
 
         ## Read result CSV
@@ -509,13 +527,17 @@ class RunnerMatchPage(QtGui.QWizardPage):
                 runner_list = [runner for runner in database_runners if
                                runner.team.name == runner_info[1]]
 
-                runner_match = ndbsearch.runner_search(runner_info[0], limit=1,
+                search_result = ndbsearch.runner_search(runner_info[0], limit=1,
                                                        runner_list=runner_list)[0]
 
-                runner_matches.append((runner_info[0], runner_match[0].name,
-                                       runner_info[1], runner_info[2]))
-                self.database_runner_names.append([runner.name for runner in \
-                                                   runner_list])
+                runner_match = (runner_info[0], search_result[0].name,
+                                search_result[1], runner_info[1],
+                                runner_info[2])
+
+                runner_matches.append(runner_match)
+                
+                self.database_runner_names.append([runner.name for \
+                                                   runner in runner_list])
 
         ## Create a MultiMatchDisplay
         self.runnermatchesDisplay = RunnerMultiDisplay(runner_matches,
@@ -539,7 +561,104 @@ class RunnerMatchPage(QtGui.QWizardPage):
 ################################################################################
 
 class ModifyPage(QtGui.QWizardPage):
-    pass
+
+    def __init__(self):
+        super(ModifyPage, self).__init__()
+
+        ## Create QWidget objects
+        self.ratingLabel = QtGui.QLabel('Assign 200 SR Time:')
+        self.ratingSpinBox = QtGui.QDoubleSpinBox()
+        self.ratingSpinBox.setDecimals(3)
+        self.ratingSpinBox.setRange(500.000, 1800.000)
+        self.ratingSpinBox.setSuffix(' s')
+
+        self.errorLabel = QtGui.QLabel('Error:')
+        self.errorEdit = QtGui.QLineEdit()
+
+        self.runnerTable = QtGui.QTableWidget(15, 6)
+        self.runnerTable.verticalHeader().setVisible(False)
+        self.runnerTable.setHorizontalHeaderLabels(['Name', 'Gender',
+                                                    'Team', 'Time',
+                                                    'Old Rating',
+                                                    'New Rating'])
+
+        self.generateButton = QtGui.QPushButton('Generate')
+        self.exportButton = QtGui.QPushButton('Export')
+        self.confirmCheckBox = QtGui.QCheckBox('Confirm')
+
+        ## Set up layout
+        self.grid = QtGui.QGridLayout()
+        self.grid.setSpacing(20)
+
+        self.grid.addWidget(self.ratingLabel, 0, 0)
+        self.grid.addWidget(self.ratingSpinBox, 0, 1)
+        self.grid.addWidget(self.generateButton, 0, 2)
+        self.grid.addWidget(self.errorLabel, 0, 4)
+        self.grid.addWidget(self.errorEdit, 0, 5)
+        self.grid.addWidget(self.runnerTable, 1, 0, 10, 6)
+        self.grid.addWidget(self.exportButton, 12, 4)
+        self.grid.addWidget(self.confirmCheckBox, 12, 5)
+        self.setLayout(self.grid)
+
+        ## Register fields
+        self.registerField('modify_check*', self.confirmCheckBox)
+
+    def initializePage(self):
+
+        ## Get race information
+        gender_dict = {1: 'M', 2 : 'W'}
+        race_gender = gender_dict[self.field('race_gender').toPyObject()]
+
+        runner_matches = self.field('runner_matches').toPyObject()
+
+        if race_gender == 'M':
+            self.ratingSpinBox.setValue(1500.000)
+        else:
+            self.ratingSpinBox.setValue(1125.000)
+
+        with ndb.db_session(DATABASE) as session:
+
+            runner_list = []
+            self.runnerTable.setRowCount(len(runner_matches))
+            
+            for i, match in enumerate(runner_matches):
+
+                try:
+                    runner = ndb.Runner.from_db(session,
+                                                names = match[1])[0]
+                except ndberrors.QueryError:
+                    runner = ndb.Runner(name = match[1], status = True,
+                                    gender = race_gender)
+
+                    team = ndb.Team.from_db(session,
+                                            names = match[3])[0]
+                    team.runners.append(runner)
+
+                runner_list.append(runner)
+            
+                name = QtGui.QTableWidgetItem(runner.name)
+                gender = QtGui.QTableWidgetItem(runner.gender)
+                team = QtGui.QTableWidgetItem(runner.team.name)
+                time = QtGui.QTableWidgetItem(match[4])
+
+                print runner.rating, type(runner.rating)
+                if runner.rating is not None:
+                    oldrating = QtGui.QTableWidgetItem(str(runner.rating))
+                else:
+                    oldrating = QtGui.QTableWidgetItem('N/A')
+
+                ## Populate runner table
+                self.runnerTable.setItem(i, 0, name)
+                self.runnerTable.setItem(i, 1, gender)
+                self.runnerTable.setItem(i, 2, team)
+                self.runnerTable.setItem(i, 3, time)
+                self.runnerTable.setItem(i, 4, oldrating)
+
+        ## Write function to generate new rating
+        ## Sort by new rating
+        ## Write functions for other buttons
+
+        self.runnerTable.resizeColumnsToContents()
 
 ################################################################################
 ##
