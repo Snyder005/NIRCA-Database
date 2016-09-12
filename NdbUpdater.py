@@ -316,6 +316,63 @@ class RunnerMultiDisplay(MultiMatchDisplay):
 
 ################################################################################
 ##
+## Race Table Widget
+##
+################################################################################
+
+class RaceTableWidget(QtGui.QTableWidget):
+
+    def __init__(self, rows):
+        super(RaceTableWidget, self).__init__(rows, 4)
+
+        self.verticalHeader().setVisible(False)
+        self.setHorizontalHeaderLabels(['Runner ID', 'Time', 'Current Rating',
+                                        'Race Rating'])
+
+    def addRace(self, race, old_ratings):
+
+        self.race = race
+        self.old_ratings = old_ratings
+
+        self.setRowCount(len(self.old_ratings))
+        for i, result in enumerate(self.race.results):
+
+            runner_id = QtGui.QTableWidgetItem(str(result.runner_id))
+            time = QtGui.QTableWidgetItem(str(result.time)) # may have to format
+
+            if self.old_ratings[i] is not None:
+                oldrating = QtGui.QTableWidgetItem(str(self.old_ratings[i]))
+            else:
+                oldrating = QtGui.QTableWidgetItem(str('None'))
+
+            self.setItem(i, 0, runner_id)
+            self.setItem(i, 1, time)
+            self.setItem(i, 2, oldrating)
+
+        self.resizeColumnsToContents()
+
+    def calculate_ratings(self, r200):
+
+        self.race.calculate_ratings(r200)
+
+        error = 0
+        for i, result in enumerate(self.race.results):
+
+            newrating = QtGui.QTableWidgetItem(str(result.rating))
+            self.setItem(i, 3, newrating)
+
+            if self.old_ratings[i] is None:
+                error += 0
+            else:
+                diff = float(self.old_ratings[i])-result.rating
+                if abs(diff) <= 20.0:
+                    error += diff**2.
+
+        return error
+
+        
+################################################################################
+##
 ## Intro Wizard Page
 ##
 ################################################################################
@@ -575,12 +632,7 @@ class ModifyPage(QtGui.QWizardPage):
         self.errorLabel = QtGui.QLabel('Error:')
         self.errorEdit = QtGui.QLineEdit()
 
-        self.runnerTable = QtGui.QTableWidget(15, 6)
-        self.runnerTable.verticalHeader().setVisible(False)
-        self.runnerTable.setHorizontalHeaderLabels(['Name', 'Gender',
-                                                    'Team', 'Time',
-                                                    'Old Rating',
-                                                    'New Rating'])
+        self.raceTable = RaceTableWidget(15)
 
         self.generateButton = QtGui.QPushButton('Generate')
         self.exportButton = QtGui.QPushButton('Export')
@@ -595,10 +647,12 @@ class ModifyPage(QtGui.QWizardPage):
         self.grid.addWidget(self.generateButton, 0, 2)
         self.grid.addWidget(self.errorLabel, 0, 4)
         self.grid.addWidget(self.errorEdit, 0, 5)
-        self.grid.addWidget(self.runnerTable, 1, 0, 10, 6)
+        self.grid.addWidget(self.raceTable, 1, 0, 10, 6)
         self.grid.addWidget(self.exportButton, 12, 4)
         self.grid.addWidget(self.confirmCheckBox, 12, 5)
         self.setLayout(self.grid)
+
+        ## Connect signals and slots
 
         ## Register fields
         self.registerField('modify_check*', self.confirmCheckBox)
@@ -607,58 +661,61 @@ class ModifyPage(QtGui.QWizardPage):
 
         ## Get race information
         gender_dict = {1: 'M', 2 : 'W'}
-        race_gender = gender_dict[self.field('race_gender').toPyObject()]
+        self.race_gender = gender_dict[self.field('race_gender').toPyObject()]
+        self.race_distance = int(self.field('race_distance').toPyObject())
+        self.runner_matches = self.field('runner_matches').toPyObject()
+        self.race_date = self.field('race_date').toPyObject()
+        self.race_name = self.field('race_name').toPyObject()
 
-        runner_matches = self.field('runner_matches').toPyObject()
-
-        if race_gender == 'M':
+        if self.race_gender == 'M':
             self.ratingSpinBox.setValue(1500.000)
         else:
             self.ratingSpinBox.setValue(1125.000)
 
+        ## Add new runners and create Race object
+        result_list = []
+        old_ratings = []
         with ndb.db_session(DATABASE) as session:
-
-            runner_list = []
-            self.runnerTable.setRowCount(len(runner_matches))
             
-            for i, match in enumerate(runner_matches):
+            for i, match in enumerate(self.runner_matches):
 
                 try:
                     runner = ndb.Runner.from_db(session,
                                                 names = match[1])[0]
                 except ndberrors.QueryError:
                     runner = ndb.Runner(name = match[1], status = True,
-                                    gender = race_gender)
+                                    gender = self.race_gender)
 
                     team = ndb.Team.from_db(session,
                                             names = match[3])[0]
                     team.runners.append(runner)
 
-                runner_list.append(runner)
-            
-                name = QtGui.QTableWidgetItem(runner.name)
-                gender = QtGui.QTableWidgetItem(runner.gender)
-                team = QtGui.QTableWidgetItem(runner.team.name)
-                time = QtGui.QTableWidgetItem(match[4])
+                result = ndb.Result(name=self.race_name, date=self.race_date,
+                                distance=self.race_distance,
+                                rating=None, time = match[4],
+                                runner_id = runner.id)
+                result_list.append(result)
+                old_ratings.append(runner.rating)
 
-                print runner.rating, type(runner.rating)
-                if runner.rating is not None:
-                    oldrating = QtGui.QTableWidgetItem(str(runner.rating))
-                else:
-                    oldrating = QtGui.QTableWidgetItem('N/A')
+        race = ndb.Race(self.race_name, self.race_date, self.race_distance,
+                    result_list)
 
-                ## Populate runner table
-                self.runnerTable.setItem(i, 0, name)
-                self.runnerTable.setItem(i, 1, gender)
-                self.runnerTable.setItem(i, 2, team)
-                self.runnerTable.setItem(i, 3, time)
-                self.runnerTable.setItem(i, 4, oldrating)
+        self.raceTable.addRace(race, old_ratings)
 
-        ## Write function to generate new rating
-        ## Sort by new rating
-        ## Write functions for other buttons
+        self.update(self.ratingSpinBox.value())
 
-        self.runnerTable.resizeColumnsToContents()
+        self.ratingSpinBox.valueChanged.connect(self.update)
+
+
+    def generate(self):
+        pass
+
+    @QtCore.pyqtSlot()
+    def update(self, r200):
+
+        error = self.raceTable.calculate_ratings(r200)
+
+        self.errorEdit.setText('{0:.3f}'.format(error))
 
 ################################################################################
 ##

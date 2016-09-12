@@ -454,6 +454,17 @@ class Race:
         self.results = results
         self._is_processed = False
 
+        if distance == 8000:
+            self._scale = 5.0
+        elif distance == 6000:
+            self._scale = 3.75
+        elif distance == 5000:
+            self._scale = 3.0
+        elif distance == 4000:
+            self._scale = 2.5
+        else:
+            raise ValueError('Invalid distance {0}.'.format(distance))
+
     @classmethod
     def from_csv(cls, resultfile):
 
@@ -491,9 +502,22 @@ class Race:
     def is_processed(self):
         return self._is_processed
 
+    @property
+    def scale(self):
+        return self._scale
+
     def generate_ratings(self):
         """Generate ratings using a MCMC technique."""
         pass
+
+    def calculate_ratings(self, r200):
+
+        for result in self.results:
+
+            time_in_s = sum(float(x) * 60 ** i for i,x in \
+                            enumerate(reversed(result.time.split(":"))))
+            new_rating = 200-(time_in_s - r200)/self._scale
+            result.rating = new_rating      
         
     def process(self, session):
         """Export ratings to a SQL database."""
