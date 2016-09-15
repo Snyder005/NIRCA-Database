@@ -4,6 +4,7 @@ import sys
 import NIRCAdb as ndb
 import argparse
 import copy
+import csv
 
 from NIRCAdb import search as ndbsearch
 from NIRCAdb import errors as ndberrors
@@ -18,10 +19,10 @@ DATABASE = None
 ################################################################################
 
 class UpdateWizard(QtGui.QWizard):
-    NUM_PAGES = 6
+    NUM_PAGES = 5
 
     (PageIntro, PageTeamMatch, PageRunnerMatch, PageModify,
-     PageConfirmation, PageConclusion) = range(NUM_PAGES)
+     PageConclusion) = range(NUM_PAGES)
 
     def __init__(self, parent=None):
         super(UpdateWizard, self).__init__(parent)
@@ -30,7 +31,6 @@ class UpdateWizard(QtGui.QWizard):
         self.setPage(self.PageTeamMatch, TeamMatchPage())
         self.setPage(self.PageRunnerMatch, RunnerMatchPage())
         self.setPage(self.PageModify, ModifyPage())
-        self.setPage(self.PageConfirmation, ConfirmationPage())
         self.setPage(self.PageConclusion, ConclusionPage())
 
         self.setStartId(self.PageIntro)
@@ -329,6 +329,8 @@ class RaceTableWidget(QtGui.QTableWidget):
         self.setHorizontalHeaderLabels(['Runner ID', 'Time', 'Current Rating',
                                         'Race Rating'])
 
+        self.race = None
+
     def addRace(self, race, old_ratings):
 
         self.race = race
@@ -369,6 +371,24 @@ class RaceTableWidget(QtGui.QTableWidget):
                     error += diff**2.
 
         return error
+
+    def export_to_csv(self, filename):
+
+        with open(filename, 'w') as f:
+            writer = csv.writer(f)
+
+            for i, result in enumerate(self.race.results):
+
+                time_in_s = sum(float(x) * 60 ** i for i,x in \
+                                enumerate(reversed(result.time.split(":"))))
+
+                if self.old_ratings[i] is None:
+                    old_rating = ''
+                else:
+                    old_rating = str(self.old_ratings[i])
+
+                writer.writerow([result.runner_id, time_in_s,
+                                 result.rating, old_rating])
 
         
 ################################################################################
@@ -562,7 +582,7 @@ class RunnerMatchPage(QtGui.QWizardPage):
                 cols = str.split(row, ',')
                 runner_name = cols[0]
                 runner_team_name = team_dict[cols[1]]
-                runner_time = cols[2]
+                runner_time = cols[2].rstrip()
                 runner_info_list.append((runner_name, runner_team_name,
                                          runner_time))
 
@@ -636,6 +656,7 @@ class ModifyPage(QtGui.QWizardPage):
 
         self.generateButton = QtGui.QPushButton('Generate')
         self.exportButton = QtGui.QPushButton('Export')
+        self.addButton = QtGui.QPushButton('Add')
         self.confirmCheckBox = QtGui.QCheckBox('Confirm')
 
         ## Set up layout
@@ -648,7 +669,8 @@ class ModifyPage(QtGui.QWizardPage):
         self.grid.addWidget(self.errorLabel, 0, 4)
         self.grid.addWidget(self.errorEdit, 0, 5)
         self.grid.addWidget(self.raceTable, 1, 0, 10, 6)
-        self.grid.addWidget(self.exportButton, 12, 4)
+        self.grid.addWidget(self.exportButton, 12, 0)
+        self.grid.addWidget(self.addButton, 12, 4)
         self.grid.addWidget(self.confirmCheckBox, 12, 5)
         self.setLayout(self.grid)
 
@@ -664,8 +686,13 @@ class ModifyPage(QtGui.QWizardPage):
         self.race_gender = gender_dict[self.field('race_gender').toPyObject()]
         self.race_distance = int(self.field('race_distance').toPyObject())
         self.runner_matches = self.field('runner_matches').toPyObject()
-        self.race_date = self.field('race_date').toPyObject()
-        self.race_name = self.field('race_name').toPyObject()
+        date =  self.field('race_date').toPyObject()
+        self.race_date = date.toPyDate()
+        self.race_name = str(self.field('race_name').toPyObject())
+
+        print type(self.race_distance)
+        print type(self.race_date)
+        print type(self.race_name)
 
         if self.race_gender == 'M':
             self.ratingSpinBox.setValue(1500.000)
@@ -690,41 +717,50 @@ class ModifyPage(QtGui.QWizardPage):
                                             names = match[3])[0]
                     team.runners.append(runner)
 
-                result = ndb.Result(name=self.race_name, date=self.race_date,
-                                distance=self.race_distance,
-                                rating=None, time = match[4],
-                                runner_id = runner.id)
+                result = ndb.Result(name=self.race_name,
+                                    date=self.race_date,
+                                    distance=self.race_distance,
+                                    rating=None, time = match[4],
+                                    runner_id = runner.id)
                 result_list.append(result)
                 old_ratings.append(runner.rating)
 
-        race = ndb.Race(self.race_name, self.race_date, self.race_distance,
-                    result_list)
+        race = ndb.Race(self.race_name,
+                        self.race_date,
+                        self.race_distance, result_list)
 
         self.raceTable.addRace(race, old_ratings)
 
-        self.update(self.ratingSpinBox.value())
+        self.update()
 
         self.ratingSpinBox.valueChanged.connect(self.update)
-
+        self.exportButton.clicked.connect(self.export)
+        self.addButton.clicked.connect(self.add)
 
     def generate(self):
         pass
 
     @QtCore.pyqtSlot()
-    def update(self, r200):
+    def update(self):
 
+        r200 = self.ratingSpinBox.value()
+        
         error = self.raceTable.calculate_ratings(r200)
 
         self.errorEdit.setText('{0:.3f}'.format(error))
 
-################################################################################
-##
-## Confirmation Page
-##
-################################################################################
+    @QtCore.pyqtSlot()
+    def export(self):
 
-class ConfirmationPage(QtGui.QWizardPage):
-    pass
+        filename = '{0}_{1}_Raw.csv'.format(self.race_name, self.race_gender)
+        print filename
+        self.raceTable.export_to_csv(filename)
+
+    @QtCore.pyqtSlot()
+    def add(self):
+
+        with ndb.db_session(DATABASE) as session:
+            self.raceTable.race.process(session)
 
 ################################################################################
 ##
@@ -733,7 +769,16 @@ class ConfirmationPage(QtGui.QWizardPage):
 ################################################################################
 
 class ConclusionPage(QtGui.QWizardPage):
-    pass
+
+    def __init__(self):
+        super(ConclusionPage, self).__init__()
+
+        self.conclusionLabel = QtGui.QLabel('Results have been added.')
+
+        self.grid = QtGui.QGridLayout()
+        self.grid.addWidget(self.conclusionLabel, 0, 0)
+        self.setLayout(self.grid)
+        
 
 ################################################################################
 ##
