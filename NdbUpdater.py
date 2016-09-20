@@ -453,7 +453,7 @@ class IntroPage(QtGui.QWizardPage):
 
         ## Register fields
         self.registerField('race_name*', self.nameEdit)
-        self.registerField('race_date*', self.dateEdit, 'date',
+        self.registerField('race_date', self.dateEdit, 'date',
                            self.dateEdit.dateChanged)
         self.registerField('race_gender*', self.genderComboBox)
         self.registerField('race_distance*', self.distanceComboBox,
@@ -716,6 +716,9 @@ class ModifyPage(QtGui.QWizardPage):
                     team = ndb.Team.from_db(session,
                                             names = match[3])[0]
                     team.runners.append(runner)
+                    session.flush()
+
+                print runner.id, runner.name
 
                 result = ndb.Result(name=self.race_name,
                                     date=self.race_date,
