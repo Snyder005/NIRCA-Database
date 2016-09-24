@@ -1,0 +1,47 @@
+Pacific:
+
+UC Davis - 136 (3)
+Cal Poly - 286 (9)
+University of Oregon - 307 (10)
+Stanford University - 676 (25)
+UCLA - 1205 (38)
+
+Great Lakes:
+
+University of Michigan - 88 (1)
+Indiana University - 89 (2)
+Purdue University - 452 (15)
+Michigan State University - 511 (16)
+Miami University (OH) - 577 (18)
+
+Great Plains:
+
+Iowa State University - 204 (5)
+University of Wisconsin - 238 (6)
+Univesity of Illinois - 273 (8)
+University of Minnesota - 412 (11)
+Northwestern University - 640 (22)
+
+Mid-Atlantic:
+
+Pennsylvania State University - 187 (4)
+University of Pennsylvania - 262 (7)
+University of Virginia - 416 (13)
+University of Maryland - 431 (14)
+University of Delaware - 572 (17)
+
+Southeast:
+
+North Carolina State University - 416 (12)
+University of North Carolina - 775 (29)
+Clemson University - 1129 (35)
+Duke University - 1140 (36)
+University of Tennessee - 1308 (41)
+
+Northeast:
+
+Binghamton University - 695 (27)
+Harvard University - 732 (28)
+University of Connecticut - 895 (30)
+Northeastern University - 1272 (39)
+University at Buffalo - 1311 (43)

@@ -198,7 +198,7 @@ class Runner(Base):
                       min(result.rating, self.rating)*0.15
             elif 20 < diff < 30:
                 new = max(result.rating, self.rating)*0.8 + \
-                      min(result.rating, self.rating)*0.75
+                      min(result.rating, self.rating)*0.2
             else:
                 new = max(result.rating, self.rating)*0.75 + \
                       min(result.rating, self.rating)*0.25
