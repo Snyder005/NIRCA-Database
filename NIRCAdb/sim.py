@@ -4,6 +4,8 @@ This contains the objects that control the simulation processes.
 
 """
 
+from database import Team, Runner
+
 ################################################################################
 ##
 ## Simulator Object
@@ -18,17 +20,29 @@ class Sim:
         runners (list): List of all runners in the race. May be empty.
     """
 
-    def __init__(self, teams):
+    def __init__(self, teams, gender='M'):
 
-        ## Format teams to include only top 7 and ignore ineligible teams
         if not isinstance(teams, list):
             teams = [teams]
-        for team in teams:
-            team.sort_by_rating()
-        self.teams = [Team(id=t.id, name=t.name, runners=t.runners[0:7]) \
-                      for t in teams if t.size() >=5]
 
+        ## Find teams with at least five active runners
+        self.teams = []
         self.runners = []
+
+        for team in teams:
+            active_runners = [runner for runner in team.runners \
+                              if runner.status == True \
+                              if runner.gender == gender]
+
+
+            ## If more than 5, add team to the Sim list of teams
+            if len(active_runners) >= 5:
+                self.teams.append(team)
+                active_runners.sort(key=lambda x: float(x.rating),
+                                             reverse=True)
+                scorers = active_runners[0:7]
+                self.runners += scorers
+
         self._is_simulated = False
 
     @property
@@ -48,9 +62,6 @@ class Sim:
         ## Generates ratings for every runner on each team
         for team in self.teams:
             team.sim_races(num_races, mode, **kwargs)
-
-        self.runners = [runner for team in self.teams for runner in \
-                        team.runners]
 
         ## For each race calculate each teams score
         for i in range(num_races):
@@ -84,3 +95,27 @@ class Sim:
         #    runner.show_result()
         #
         #return print_string
+
+    def predict(self):
+
+        ## For each race calculate each teams score
+        self.runners.sort(key=lambda x: x.rating, reverse=True)
+        for team in self.teams:
+            places = [1 + self.runners.index(runner) for runner \
+                      in self.runners if team.name == runner.team.name]
+            team.result_list.append([0, sum(places[:5])])
+                
+        self.teams.sort(key=lambda x: x.result_list[0][1])
+            
+        for team in self.teams:
+            team.result_list[0][0] = self.teams.index(team) + 1
+
+        for i, team in enumerate(self.teams):
+            print "{0}  {1}  {2}".format(i+1, team.name, team.result_list[0])
+
+        for i, runner in enumerate(self.runners):
+            print "{0} {1} {2} {3}".format(i+1, runner.name,
+                                           runner.team.name,
+                                           runner.rating)
+
+        

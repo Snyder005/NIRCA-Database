@@ -321,6 +321,21 @@ class Team(Base):
     ## Create one-to-many relationship with Runners table
     runners = relationship("Runner", backref=backref('team'))
 
+    def __init__(self, name, region=None, runners=None):
+
+        self.name = name
+        self.region = None
+
+        if runners is None:
+            self.runners = []
+        else:
+            self.runners = runners
+
+        self._average = None
+        self._result_list = []
+        self._races_simulated = False
+        
+
     @classmethod
     def from_db(cls, session, names = [], regions=[]):
         """Query database and return Teams depending on given filter.
