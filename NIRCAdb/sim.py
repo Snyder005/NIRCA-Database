@@ -111,10 +111,10 @@ class Sim:
             team.result_list[0][0] = self.teams.index(team) + 1
 
         for i, team in enumerate(self.teams):
-            print "{0}  {1}  {2}".format(i+1, team.name, team.result_list[0])
+            print "{0},  {1},  {2}".format(i+1, team.name, team.result_list[0])
 
         for i, runner in enumerate(self.runners):
-            print "{0} {1} {2} {3}".format(i+1, runner.name,
+            print "{0}, {1}, {2}, {3}".format(i+1, runner.name,
                                            runner.team.name,
                                            runner.rating)
 
