@@ -194,15 +194,18 @@ class MultiMatchDisplay(QtGui.QWidget):
 
         self._perfect = []
         self._imperfect = []
-        self.database_names = database_names
+        self.database_names = []
+
+        print len(matches), len(database_names)
 
         ## Separate perfect matches and imperfect matches
-        for match in matches:
+        for i, match in enumerate(matches):
             if match[2] == 100:
                 self._perfect.append(match)
 
             else:
                 self._imperfect.append(match)
+                self.database_names.append(database_names[i])
 
         ## If there are imperfect matches construct display
         if len(self._imperfect) > 0:
@@ -604,12 +607,18 @@ class RunnerMatchPage(QtGui.QWizardPage):
                 runner_list = [runner for runner in database_runners if
                                runner.team.name == runner_info[1]]
 
-                search_result = ndbsearch.runner_search(runner_info[0], limit=1,
-                                                       runner_list=runner_list)[0]
+                if len(runner_list) > 0:
 
-                runner_match = (runner_info[0], search_result[0].name,
-                                search_result[1], runner_info[1],
-                                runner_info[2])
+                    search_result = ndbsearch.runner_search(runner_info[0], limit=1,
+                                                            runner_list=runner_list)[0]
+
+                    runner_match = (runner_info[0], search_result[0].name,
+                                    search_result[1], runner_info[1],
+                                    runner_info[2])
+
+                else:
+                    runner_match = (runner_info[0], '', 0, runner_info[1],
+                                    runner_info[2])
 
                 runner_matches.append(runner_match)
                 
