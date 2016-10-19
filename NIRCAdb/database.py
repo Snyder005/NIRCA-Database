@@ -117,33 +117,31 @@ class Runner(Base):
 
         query = session.query(cls)
 
-        ## If list of names, ignore other filters
+        ## Format runner names and team names as list
         if not isinstance(names, list):
             names = [names]
 
-        if len(names) > 0:
-            if len(names) == 1:
-                query = query.filter(cls.name == names[0])
-            elif len(names) > 1:
-                query = query.filter(cls.name.in_(names))
+        if not isinstance(team_list, list):
+            team_list = [team_list]
+
+        ## Filter by name
+        if len(names) == 1:
+            query = query.filter(cls.name == names[0])
+        elif len(names) > 1:
+            query = query.filter(cls.name.in_(names))
         
-        else:
-            ## Filter by gender
-            if gender in ['M', 'W']:
-                query = query.filter(cls.gender == gender)
+        ## Filter by gender
+        if gender in ['M', 'W']:
+            query = query.filter(cls.gender == gender)
 
-            ## Filter by status
-            if status is not None:
-                query = query.filter(cls.status == status)
+        ## Filter by status
+        if status is not None:
+            query = query.filter(cls.status == status)
 
-            ## Filter by team
-            if not isinstance(team_list, list):
-                team_list = [team_list]
-
-            if len(team_list) == 1:
-                query = query.join(Team).filter(Team.name == team_list[0])
-            elif len(team_list) > 1:
-                query = query.join(Team).filter(Team.name.in_(team_list))
+        if len(team_list) == 1:
+            query = query.join(Team).filter(Team.name == team_list[0])
+        elif len(team_list) > 1:
+            query = query.join(Team).filter(Team.name.in_(team_list))
 
         ## Check that query returned non-empty list
         runners = query.all()
