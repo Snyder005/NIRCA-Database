@@ -49,8 +49,8 @@ class PredictorWizard(QtGui.QWizard):
 
         self.setPage(self.PageIntro, PredictorIntroPage(self))
         self.setPage(self.PageTeamMatch, TeamMatchPage(database_ref))
-        self.setPage(self.PageRunnerMatch, RunnerConfirmPage(database_ref,
-                                                             guess=False))
+        self.setPage(self.PageRunnerMatch, RunnerMatchPage(database_ref,
+                                                           guess=False))
         self.setPage(self.PageResults, ResultsPage(database_ref))
 
         self.setStartId(self.PageIntro)
@@ -193,11 +193,10 @@ class PredictorIntroPage(QtGui.QWizardPage):
 
 class TeamMatchPage(QtGui.QWizardPage):
 
-    def __init__(self, database_ref, guess=True, parent=None):
+    def __init__(self, database_ref, parent=None):
         super(TeamMatchPage, self).__init__(parent)
 
         self.database_ref = database_ref
-        self.guess = guess
 
         ## Set up scroll bars
         self.scroll = QtGui.QScrollArea()
@@ -241,8 +240,7 @@ class TeamMatchPage(QtGui.QWizardPage):
         ## Create a MultiMatchDisplay
         self.teammatchesDisplay = TeamMultiDisplay(team_matches,
                                                    self.database_team_names,
-                                                   self.database_ref,
-                                                   self.guess)
+                                                   self.database_ref)
 
         ## Finalize scroll area
         self.scroll.setWidget(self.teammatchesDisplay)
@@ -325,9 +323,20 @@ class RunnerMatchPage(QtGui.QWizardPage):
                     search_result = ndbsearch.runner_search(runner_info[0], limit=1,
                                                             runner_list=runner_list)[0]
 
-                    runner_match = (runner_info[0], search_result[0].name,
-                                    search_result[1], runner_info[1],
-                                    runner_info[2])
+                    if self.guess == False:
+                        if search_result[1] < 100:
+                            runner_match = (runner_info[0], 'Not Found',
+                                            search_result[1], runner_info[1],
+                                            runner_info[2])
+                        else:
+                            runner_match = (runner_info[0], search_result[0].name,
+                                            search_result[1], runner_info[1],
+                                            runner_info[2])
+                            
+                    else:
+                        runner_match = (runner_info[0], search_result[0].name,
+                                        search_result[1], runner_info[1],
+                                        runner_info[2])
 
                 else:
                     runner_match = (runner_info[0], '', 0, runner_info[1],
@@ -340,8 +349,7 @@ class RunnerMatchPage(QtGui.QWizardPage):
 
         ## Create a MultiMatchDisplay
         self.runnermatchesDisplay = RunnerMultiDisplay(runner_matches,
-                                                       self.database_runner_names,
-                                                       self.guess)
+                                                       self.database_runner_names)
 
         ## Finalize scroll area
         self.scroll.setWidget(self.runnermatchesDisplay)
@@ -391,39 +399,43 @@ class ResultsPage(QtGui.QWizardPage):
         ## Get database runners
         runner_list = []
         scoring_team_names = []
+
+        print len(self.runner_matches)
         
         with ndb.db_session(self.database_ref) as session:
             
             for i, match in enumerate(self.runner_matches):
 
-                team_runners[match[3]]
-
                 ## Check if scoring runners needed
-                if len(team_runners) < 7:
+                try:
+                    runner = ndb.Runner.from_db(session,
+                                                names = match[1],
+                                                team_list = match[3])[0]
+                    team_dict[match[3]].append(runner)
 
-                    try:
-                        runner = ndb.Runner.from_db(session,
-                                                    names = match[1],
-                                                    team_list = match[3])[0]
-                        team_runners.append(runner)
+                    print "{0}, {1}".format(i, runner.name)
                     
-                    except ndberrors.QueryError:
-                        pass
+                except ndberrors.QueryError:
+                    print "Skip, {0}".format(i)
+                    pass
 
-        ## Determine which teams can be scored
-        for key, value in team_dict.iteritems():
-            if len(value) >=5:
-                runner_list += value
-                scoring_team_names.append(key)
+            ## Determine which teams can be scored
+            for key, value in team_dict.iteritems():
+                value.sort(key=lambda x: float(x.rating), reverse=True)
+                if len(value) >=5:
+                    runner_list += value[:7]
+                    scoring_team_names.append(key)
 
-        ## Sort and score runners
-        runner_list.sort(key=lambda x: float(x.rating), reverse=True)
+            ## Sort and score runners
+            runner_list.sort(key=lambda x: float(x.rating), reverse=True)
 
-        for team_name in scoring_team_names:
-            places = [1 + runner_list.index(runner) for runner \
-                      in runner_list if team_name == runner.team.name]
-            self.resultsDisplay.insertPlainText("{0}, {1}\n".format(team_name,
-                                                                  sum(places[:5])))
+            for team_name in scoring_team_names:
+                places = [1 + runner_list.index(runner) for runner \
+                          in runner_list if team_name == runner.team.name]
+                self.resultDisplay.insertPlainText("{0}, {1}\n".format(team_name,
+                                                                        sum(places[:5])))
+            for runner in runner_list:
+                print runner.name, runner.team.name, runner.rating
 
         
 class ModifyPage(QtGui.QWizardPage):
@@ -718,7 +730,7 @@ class MultiMatchDisplay(QtGui.QWidget):
 
     matches_changed = QtCore.pyqtSignal(int)
 
-    def __init__(self, matches, database_names, guess=True, parent=None):
+    def __init__(self, matches, database_names, parent=None):
         super(MultiMatchDisplay, self).__init__(parent)
 
         self._perfect = []
@@ -754,11 +766,7 @@ class MultiMatchDisplay(QtGui.QWidget):
             for i, match in enumerate(self._imperfect):
 
                 nameLabel = QtGui.QLabel(match[0])
-
-                if guess == True:
-                    nameLineEdit = QtGui.QLineEdit(match[1])
-                else:
-                    nameLineEdit = QtGui.QLineEdit('Not Found')
+                nameLineEdit = QtGui.QLineEdit(match[1])
                 nameLineEdit.setReadOnly(True)
 
                 newButton = QtGui.QPushButton('Select')
@@ -801,10 +809,9 @@ class MultiMatchDisplay(QtGui.QWidget):
 
 class TeamMultiDisplay(MultiMatchDisplay):
 
-    def __init__(self, matches, database_names, database_ref,
-                 guess=True, parent=None):
+    def __init__(self, matches, database_names, database_ref, parent=None):
         super(TeamMultiDisplay, self).__init__(matches, database_names,
-                                               guess, parent)
+                                               parent)
 
         self.database_ref = database_ref
 
@@ -839,9 +846,9 @@ class TeamMultiDisplay(MultiMatchDisplay):
 
 class RunnerMultiDisplay(MultiMatchDisplay):
 
-    def __init__(self, matches, database_names, guess=True, parent=None):
+    def __init__(self, matches, database_names, parent=None):
         super(RunnerMultiDisplay, self).__init__(matches, database_names,
-                                                 guess, parent)
+                                                 parent)
 
     def splitMatches(self, matches, database_names):
 
